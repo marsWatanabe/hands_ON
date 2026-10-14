@@ -186,5 +186,5 @@ erDiagram
 | スキーマ管理 | Flyway（`ddl-auto=update` も有効で二重管理） | Flyway のみ。Hibernate は `ddl-auto=validate` | 解消済（原典の二重管理を解消） |
 | 初期データ | V1 SQL に同居。`PARTS`/`PRODUCT`、稼働状況 1 | `db/seed-dev/V2` に分離。`part`/`product`、稼働状況 0（テーブル定義を優先） | 解消済（C-1、C-2） |
 | 型 | `TINYINT`、`DATETIME` | `SMALLINT`、`TIMESTAMP`（PostgreSQL 互換） | 変更。原典のドキュメントの更新が必要 |
-| エンティティ | `center_info` 用のエンティティ（クラス名は別） | クラス名 `InventoryCenter`（`center_info` にマップ） | 未対応（クラス名とパッケージの整理と合わせて実施） |
+| エンティティ | `center_info` 用のエンティティ（クラス名は別） | クラス名 `Center`（`model` パッケージ、`center_info` にマップ） | 解消済 |
 | カテゴリ、部品・製品在庫のエンティティ | あり | テーブルのみ（エンティティは未作成） | 後続の API 実装時に作成 |

@@ -16,7 +16,7 @@ cd backend
 ./mvnw -B test
 ```
 
-- テストが通らない変更は PR にしない。
+- テストが通らない変更は PR にしない。カバレッジ（命令 80% 以上）は `./mvnw -B verify -Pcoverage` で検査され、CI でも実行される。
 - `backend/src/test/resources/mockito-extensions/org.mockito.plugins.MockMaker` は削除しない。
 - アプリの起動確認が必要なときは `./mvnw spring-boot:run`（http://localhost:8080/swagger-ui/index.html）。
 
@@ -45,7 +45,8 @@ cd backend
 - Controller は認証・認可、`@Valid` による入力検証、Service への委譲。Service は業務ロジックと `@Transactional`。Repository は Spring Data JPA。
 - 独自例外を使い、`GlobalExceptionHandler` で共通のエラー形式 `{ "error": { "code", "message", "timestamp" } }` に変換する。
 - ハードコーディング禁止。定数と enum を使う。
-- パッケージは、ドメイン単位（`controller/center` のように）に整理する方針（`HANDOFF.md` 7.1）。新規のクラスはこの構成で作る。
+- パッケージはドメイン単位（`controller/center`、`service/center`、`repository/center`、`dto/center` のように）。構成は `docs/detailed-design.md` 第 2 章。新規のクラスはこの構成で作る。
+- エラーコードは `exception/ErrorCode` の値を使い、ユーザー向けメッセージは日本語にする。
 - SQL を文字列連結で組み立てない（JPA のパラメータ化クエリ、`Specification`）。ソート項目は許可リストで検証する。
 - 個人情報（氏名、メール、電話番号）、パスワード、トークンをログに出さない。秘密情報をコードやドキュメントにハードコードしない（リポジトリは public）。
 - 削除は論理削除（`delete_flag`）。

@@ -11,6 +11,8 @@
 hands_ON/
 ├── backend/                 # Spring Boot バックエンド
 │   ├── src/main/java/       # Java ソース（com.aojt.mgmt）
+│   │   ├── config/ controller/{auth,user,center}/ service/{auth,jwt,center}/
+│   │   ├── repository/{user,center}/ model/ dto/{auth,user,center,common}/ exception/
 │   ├── src/main/resources/
 │   │   ├── application.yml
 │   │   └── db/
@@ -23,6 +25,7 @@ hands_ON/
 │   ├── detailed-design.md           # 詳細設計書（在庫センター API）
 │   ├── non-functional-requirements.md  # 非機能要件
 │   └── review/                      # レビュー報告書
+├── .github/                 # Copilot 指示、CI、Issue テンプレート
 └── frontend/                # Next.js フロントエンド（未作成）
 ```
 
@@ -97,10 +100,25 @@ $ ./mvnw flyway:migrate
 
 ### Backend
 
-JUnit を使用してテストを実行する。テストはプロファイル `test`（テストごとに独立したインメモリ H2）で動く。
+JUnit を使用してテストを実行する。テストはプロファイル `test`（テストごとに独立したインメモリ H2）で動く。Controller、Service、Repository、Config の層ごとのユニットテストと、結合テスト、DB スキーマテストがある（計 123 件）。
 
 ```bash
 $ ./mvnw test
+```
+
+カバレッジ（命令カバレッジ 80% 以上。現在 95.6%）を検査する場合は、プロファイル `coverage` を付ける。レポートは `target/site/jacoco/index.html`。CI（GitHub Actions）では毎回これを実行する。
+
+```bash
+$ ./mvnw verify -Pcoverage
+```
+
+**注意**: JaCoCo は、プロジェクトのパスに日本語などの非 ASCII 文字（ユーザー名を含む）がある Windows では、JVM がエージェントの引数を文字化けさせて失敗する。その場合は、ASCII のドライブに割り当てて実行する。
+
+```powershell
+subst X: C:\Users\<ユーザー名>\Documents\hands_ON
+cd X:\backend
+.\mvnw.cmd verify -Pcoverage
+subst X: /D
 ```
 
 ### Frontend

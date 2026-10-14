@@ -35,7 +35,9 @@
 - 認証（登録、ログイン、トークン更新、ユーザー取得）と在庫センター API（一覧、作成、編集、論理削除）。
 - Flyway で管理するスキーマ（`_user`、`category_info`、`center_info`、`parts_stock_info`、`products_stock_info`）と、開発用の初期データ。
 - 設計書: 要件定義、ER 図、詳細設計、非機能要件、レビュー報告書（すべて `docs/`）。
-- テスト 25 件（結合テスト 13 件と DB スキーマテスト 12 件）が成功する。
+- テスト 123 件が成功する。層ごとのユニットテスト（Controller、Service、Repository、Config）、結合テスト 13 件、DB スキーマテスト 12 件。命令カバレッジ 95.6%（`-Pcoverage`）。
+- パッケージは原典のドメイン単位、Javadoc とユーザー向けメッセージは日本語、エラーコードは原典に統一済み。
+- GitHub Actions: `CI`（`./mvnw verify -Pcoverage`）と `Copilot Setup Steps`。
 - 起動、Swagger UI、H2 コンソール、`flyway:info` の確認済み。
 
 ### 3.2 構成
@@ -43,11 +45,14 @@
 ```
 hands_ON/
 ├── backend/                  # Spring Boot（com.aojt.mgmt）。ここで mvnw を実行する
+│   ├── src/main/java/...     # config, controller/{auth,user,center}, service/{auth,jwt,center},
+│   │                         # repository/{user,center}, model, dto/{auth,user,center,common}, exception
 │   ├── src/main/resources/application.yml
 │   ├── src/main/resources/db/migration/V1__initial.sql   # スキーマ
 │   ├── src/main/resources/db/seed-dev/V2__seed_dev_data.sql  # 開発用データ
-│   └── src/test/...          # InventoryCenterApiTest、repository/DatabaseSchemaTest
+│   └── src/test/...          # 層ごとのユニットテスト、CenterApiIntegrationTest、repository/DatabaseSchemaTest
 ├── docs/                     # 設計書
+├── .github/                  # copilot-instructions.md、workflows（CI、Copilot Setup Steps）、ISSUE_TEMPLATE
 └── README.md                 # 手順（原典の README を基準にしている）
 ```
 
@@ -59,6 +64,8 @@ cd C:\Users\渡邉天\Documents\hands_ON\backend
 .\mvnw.cmd test                 # テスト
 .\mvnw.cmd flyway:info          # アプリを停止してから実行する
 ```
+
+- カバレッジの検査（`-Pcoverage`）は、この PC（ユーザー名が日本語）では ASCII のドライブが必要: `subst X: C:\Users\渡邉天\Documents\hands_ON; cd X:\backend; .\mvnw.cmd verify -Pcoverage; cd C:\; subst X: /D`。
 
 - 手順は `README.md` の「環境構築」「DB マイグレーション」を基準にする。**変更しない**（合意済み）。
 - ログイン方法: Swagger の `POST /api/v1/auth/register` でユーザーを登録し、`accessToken` を **Authorize** に貼る（`Bearer ` は付けない）。
@@ -83,6 +90,7 @@ cd C:\Users\渡邉天\Documents\hands_ON\backend
 | `.\mvnw.cmd` が見つからない | `backend/` で実行していない。`cd backend` してから実行する |
 | `.mvnw.cmd`（`\` 抜け）はエラー | PowerShell では `.\` が必要 |
 | テストで Mockito の初期化エラー | ユーザー名に日本語（渡邉天）を含むパスで、Mockito のエージェント自己接続が失敗する。`backend/src/test/resources/mockito-extensions/org.mockito.plugins.MockMaker`（`mock-maker-subclass`）で回避済み。**消さない** |
+| JaCoCo で `forked VM terminated` | 同じ原因（パスの日本語）。JVM がエージェントの引数（パス）を文字化けさせる。そのため JaCoCo はプロファイル `coverage` にし、既定のビルドに入れていない。この PC では `subst X:` で ASCII パスにして実行する（第 3.3 章）。CI（Linux）では問題ない |
 | JDK | JDK は 26 のみ（`C:\jdk-26.0.1`）。ビルドは Java 21 向け（`pom.xml` の `java.version=21`）。原典は JDK 21 を前提にしている |
 | Maven | `mvnw` を使う（Maven のインストールは不要）。ラッパーは `backend/.mvn/` にある |
 | H2 のファイル DB | `./target/testdb` は 1 プロセスしか開けない。アプリの起動中に `flyway:info`/`migrate` を実行しない。DB を作り直すには、アプリを止めて `backend/target/testdb.mv.db` を削除する |
@@ -96,27 +104,27 @@ cd C:\Users\渡邉天\Documents\hands_ON\backend
 
 詳細は `docs/detailed-design.md` 第 8 章、`docs/er-diagram.md` 第 7 章。
 
-- 解消済み: テーブル名と列（`center_info` ほか）、Flyway、初期データの分離、`ddl-auto=validate`。
-- 型は `TINYINT` を `SMALLINT` に、`DATETIME` を `TIMESTAMP` に置き換えた（PostgreSQL 互換。原典の定義書の更新が必要）。
+- 解消済み: テーブル名と列（`center_info` ほか）、Flyway、初期データの分離、`ddl-auto=validate`、パッケージ構成、クラス名、日本語の Javadoc とメッセージ、エラーコード、ユニットテスト、JaCoCo。
+- 型は `TINYINT` を `SMALLINT` に、`DATETIME` を `TIMESTAMP` に置き換えた（PostgreSQL 互換）。原典の定義書はこのリポジトリの外にあるため、このリポジトリでは `docs/er-diagram.md` を正とする。
 - 初期データは原典の誤りを直した（`category_type` を `part/product`、稼働状況を 0）。
-- **未対応**: パッケージ構成（原典はドメイン単位）、日本語の Javadoc とメッセージ、エラーコード、ユニットテスト、JaCoCo。
+- **未対応**: Lombok（保留）、`error.details`（要承認）。
 
 ## 7. 残作業
 
-### 7.1 原典に合わせる修正（方針は合意済み。着手可）
+### 7.1 原典に合わせる修正（2026-10-14 に完了）
 
-- [ ] パッケージをドメイン単位に分ける（`controller/center`、`service/center`、`repository/center`、`dto/center`、`dto/common`、`model`）。
-- [ ] クラス名を `InventoryCenter` から `Center` に変える。
-- [ ] Javadoc（`@param`、`@return`、`@throws`）とメッセージを日本語にする。
-- [ ] エラーコードを原典に合わせる（`AUTH_ERROR`、`INTERNAL_ERROR`、`BUSINESS_ERROR`）。409 用に `CONFLICT` を追加する。
-- [ ] 原典の `docs/table-definitions.md` に、型の置き換え（`TINYINT` から `SMALLINT`）を反映する。
-- [ ] API 仕様書に、次を反映する: `GET /users/{id}` は DTO を返し本人か ADMIN のみ、409 を返す場合がある、`error.details`（追加する場合）。
+- [x] パッケージをドメイン単位に分ける。
+- [x] クラス名を `InventoryCenter` から `Center` に変える。
+- [x] Javadoc（`@param`、`@return`、`@throws`）とメッセージを日本語にする。
+- [x] エラーコードを原典に合わせる（`AUTH_ERROR`、`INTERNAL_ERROR`、`BUSINESS_ERROR`）。409 用に `CONFLICT` を追加。
+- [x] 型の置き換えをドキュメントに反映する（`docs/er-diagram.md`）。
+- [x] API 仕様をドキュメントに反映する（`docs/detailed-design.md` 第 6.1 章: `GET /users/{id}` は DTO、本人または ADMIN のみ。409。リフレッシュのヘッダなしは 401）。
 
 ### 7.2 実装・テスト
 
-- [ ] ユニットテストを層ごとに追加する（Controller は `@WithMockUser`、Service は Mockito、Repository は H2）。メソッド名は期待動作、Javadoc に目的を書く。
-- [ ] JaCoCo の命令カバレッジ 80% の検査を `pom.xml` に入れる（要承認: 新規の依存）。
-- [ ] PostgreSQL での検証（Flyway、検索、制約）と、本番用の設定（`spring.flyway.locations` を `classpath:db/migration` のみにする、Swagger と H2 コンソールを無効にする、ログを INFO にする、鍵を固定する）。
+- [x] ユニットテストを層ごとに追加する（Controller、Service、Repository、Config）。
+- [x] JaCoCo の命令カバレッジ 80% の検査（プロファイル `coverage`、CI で毎回実行）。
+- [ ] PostgreSQL での検証（Flyway、検索、制約）と本番用の設定。**要承認**: PostgreSQL の JDBC ドライバ（`org.postgresql:postgresql`）と Flyway の PostgreSQL モジュール（`flyway-database-postgresql`）を追加する必要がある。この PC には Docker が無いため、検証は GitHub Actions の PostgreSQL サービスコンテナで行う案。本番用設定は `application-prod.yml`（`spring.flyway.locations` を `classpath:db/migration` のみ、Swagger と H2 コンソールを無効、ログを INFO、鍵を固定、DB 接続を環境変数）。
 - [ ] 入力エラーの項目別表示（`error.details`）。**API 契約の変更なので要承認**。
 - [ ] カテゴリ、部品在庫、製品在庫の API（`docs/detailed-design.md` 第 9 章の案）。エンティティも作る。
 - [ ] フロントエンド（`frontend/`）: 在庫センター画面（一覧、検索、新規・編集・削除）。原典の `frontend/` が土台（Next.js、Chakra UI）。画面仕様の不整合（`requirements.md` C-4、C-9、C-10）を先に整理する。

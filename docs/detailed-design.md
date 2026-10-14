@@ -24,24 +24,34 @@
 
 ## 2. パッケージ構成
 
-原典の構成（`controller/auth`、`service/auth`、`repository/user` のようにドメイン単位で分ける）に合わせる。
+原典の構成（`controller/auth`、`service/auth`、`repository/user` のようにドメイン単位で分ける）に合わせる。**2026-10-14 に実装をこの構成に整理した**。
 
 ```
 com.aojt.mgmt
-├── controller/center/CenterController
-├── service/center/CenterService
-├── repository/center/CenterRepository
-├── model/Center                      （テーブル center_info に対応するエンティティ）
-├── dto/center/
-│   ├── CenterSearchRequest           （一覧のクエリパラメータ）
-│   ├── CenterRequest                 （作成・更新の本文）
-│   └── CenterResponse
-├── dto/common/
-│   ├── ErrorResponse                 （原典に既存）
-│   └── PageResponse                  （data と meta）
-├── exception/                        （BusinessException、NotFoundException。必要なら ConflictException を追加）
-└── model/CenterOperationalStatus     （稼働状況の enum。0 = 稼働中、1 = 稼働停止）
+├── InventrackApplication
+├── config/                    JwtConfig, JwtProperties, SecurityConfig, SecurityErrorHandlers, OpenApiConfig
+├── controller/
+│   ├── auth/                  AuthenticationController（登録、ログイン）, TokenRefreshController
+│   ├── user/                  UserController
+│   └── center/                CenterController
+├── service/
+│   ├── auth/                  AuthenticationService
+│   ├── jwt/                   JwtService
+│   └── center/                CenterService
+├── repository/
+│   ├── user/                  UserRepository
+│   └── center/                CenterRepository, CenterSpecifications（検索条件）
+├── model/                     Role, User（_user）, Center（center_info）
+├── dto/
+│   ├── auth/                  RegisterRequest, AuthenticationRequest, AuthenticationResponse
+│   ├── user/                  UserResponse
+│   ├── center/                CenterSearchRequest, CenterRequest, CenterResponse
+│   └── common/                ErrorResponse, PageResponse
+└── exception/                 ErrorCode, BusinessException, NotFoundException, ConflictException,
+                               GlobalExceptionHandler
 ```
+
+稼働状況の enum は作らず、`Center.STATUS_OPERATING`（0）と `Center.STATUS_STOPPED`（1）の定数を使う（API は数値 0/1 のまま）。
 
 ## 3. クラス設計
 
@@ -260,6 +270,19 @@ LIMIT :size OFFSET (:page - 1) * :size
 
 ## 6. 認証・認可の設計（再実装した部分の要点）
 
+### 6.1 認証・ユーザー API
+
+原典の API 仕様書との差分を含めて、この表を現在の仕様とする。
+
+| エンドポイント | 認証 | リクエスト | 応答 | 原典との差 |
+| --- | --- | --- | --- | --- |
+| `POST /api/v1/auth/register` | 不要 | `firstname`、`lastname`（各 100 文字以内）、`email`（255 文字以内、形式検証）、`password`（8〜72 文字） | 200: `{ accessToken, refreshToken, user }`。`user` にパスワードは含まない。登録済みメールは 409 | 原典は `User` エンティティを返し、ハッシュを含む。メールは小文字に統一して保存 |
+| `POST /api/v1/auth/authenticate` | 不要 | `email`、`password` | 200: 同上。誤りは 401（メールとパスワードのどちらが誤りかは区別しない） | 同上 |
+| `POST /api/v1/auth/refresh-token` | `Authorization: Bearer <refreshToken>` | ヘッダのみ | 200: `{ accessToken, refreshToken }`。ヘッダなし・形式不正・無効・アクセストークンを渡した場合はすべて 401 | 原典はヘッダなしを 400。hands_ON は 401 に統一 |
+| `GET /api/v1/users/{id}` | 必須 | パスの `id` | 200: `{ id, firstname, lastname, email, role }`（パスワードなし）。**本人または ADMIN のみ**。他人は 403、存在しない場合は 404 | 原典は「認証必須」のみで、エンティティをそのまま返す |
+
+### 6.2 方針
+
 | 項目 | 内容 | 出典 |
 | --- | --- | --- |
 | トークン | RS256 署名の JWT。アクセストークンは `roles` クレームを含み、リフレッシュトークンは含めない | [原典] |
@@ -278,7 +301,7 @@ LIMIT :size OFFSET (:page - 1) * :size
 | Service | JUnit 5 と Mockito。`@Mock`/`@InjectMocks` | 重複 409、404、容量超過、ソートの解決、`meta` の計算、論理削除 |
 | Repository | H2 を使用。正常、異常、境界値 | 削除済みの除外、部分一致、`%`、`_` のエスケープ、並び順の安定性 |
 | 共通 | テストクラスに目的、メソッドに検証内容の Javadoc。メソッド名は期待動作を表す | — |
-| カバレッジ | JaCoCo の命令カバレッジ 80% 以上（`mvn verify`） | [原典 `pom.xml`] |
+| カバレッジ | JaCoCo の命令カバレッジ 80% 以上。`./mvnw verify -Pcoverage`（現在 95.6%）。CI で毎回実行する | [原典 `pom.xml`]。日本語パスでは JaCoCo が動かないためプロファイルにした（HANDOFF.md 参照） |
 | 結合 | 本番 DB（PostgreSQL）での検索・制約の確認 | [提案] 非機能要件 NFR-MIG を参照 |
 
 ### 7.1 境界値の例（一覧）
@@ -295,20 +318,20 @@ LIMIT :size OFFSET (:page - 1) * :size
 
 ## 8. 現在の hands_ON の実装と原典の差分
 
-hands_ON の実装は、原典のドキュメントとコードを参照する前に作った。次の差があり、**原典に合わせるのが原則**（「ドキュメントを先に直し、実装を合わせる」）。DB スキーマと API 契約の変更は要承認のため、方針の確認後に着手する。
+原典のドキュメントとコードを参照する前の実装は、原典と食い違う点があった。**原典に合わせるのが原則**（「ドキュメントを先に直し、実装を合わせる」）。下表の「解消済」は対応済み。
 
 | 区分 | 原典 | hands_ON（2026-10-14 時点） | 状況 |
 | --- | --- | --- | --- |
 | テーブル・列 | `center_info`。桁数、NOT NULL は [er-diagram.md](er-diagram.md) 第 7 章 | 同じに修正済み（API の入力検証も合わせた） | **解消済** |
 | スキーマ管理 | Flyway | Flyway（`V1__initial.sql`、開発用データは `db/seed-dev`）。`ddl-auto=validate` | **解消済** |
-| パッケージ | `controller/center` のようにドメイン単位 | 層ごとにフラット | 未対応（原典に合わせる方針。DB の次に実施） |
-| 言語 | Javadoc、メッセージは日本語 | 英語のメッセージ、コメントが少ない | 未対応 |
-| エラーコード | `AUTH_ERROR`、`INTERNAL_ERROR`、`BUSINESS_ERROR` | `UNAUTHORIZED`、`INTERNAL_SERVER_ERROR`、`BAD_REQUEST` | 未対応。409 は `CONFLICT` を追加する方針 |
-| ユーザー取得 | `User` エンティティを返す（パスワードのハッシュを含む） | DTO を返し、本人または ADMIN のみ | 実装を維持し、API 仕様書を更新 |
+| パッケージ | `controller/center` のようにドメイン単位 | 第 2 章のとおりドメイン単位に整理、`InventoryCenter` を `Center` に改名 | **解消済** |
+| 言語 | Javadoc、メッセージは日本語 | 日本語の Javadoc（`@param`、`@return`、`@throws`）、ユーザー向けメッセージも日本語 | **解消済** |
+| エラーコード | `AUTH_ERROR`、`INTERNAL_ERROR`、`BUSINESS_ERROR` | 原典のコードに統一（`ErrorCode` enum）。409 用に `CONFLICT` を追加。JSON 解析エラーは `VALIDATION_ERROR`。容量超過は `BUSINESS_ERROR`（サービス層で検証） | **解消済** |
+| ユーザー取得 | `User` エンティティを返す（パスワードのハッシュを含む） | DTO を返し、本人または ADMIN のみ | 実装を維持。第 6.1 章に仕様を記載済 |
 | トークン | アクセス 24 時間、リフレッシュ 7 日。`token_type` なし | アクセス 15 分、リフレッシュ 7 日、`token_type` あり | **今は変更しない**（決定済み） |
-| テスト | 層ごとのユニットテスト、JaCoCo 80% | API の結合テスト 13 件と DB スキーマテスト 12 件（`DatabaseSchemaTest`） | 一部対応（サービス層、コントローラー層のユニットテストと JaCoCo は未対応） |
+| テスト | 層ごとのユニットテスト、JaCoCo 80% | 層ごとのユニットテスト（Controller、Service、Repository、Config）と結合テスト、DB スキーマテスト。計 123 件、命令カバレッジ 95.6% | **解消済**（JaCoCo は `-Pcoverage` で実行） |
 | Lombok | 使用 | 不使用 | 要確認（新規依存の扱い） |
-| `capacityConsistent` | — | `@JsonIgnore` を付けて OpenAPI の入力項目から除外済 | **解消済** |
+| `capacityConsistent` | — | 容量検証をサービス層に移し、DTO から `isCapacityConsistent` を削除 | **解消済** |
 
 ## 9. 他の API（次の詳細設計の対象。提案）
 
