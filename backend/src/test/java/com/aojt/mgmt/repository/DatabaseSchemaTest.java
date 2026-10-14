@@ -5,7 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.aojt.mgmt.entity.InventoryCenter;
+import com.aojt.mgmt.model.Center;
+import com.aojt.mgmt.repository.center.CenterRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -28,7 +29,7 @@ class DatabaseSchemaTest {
     JdbcTemplate jdbc;
 
     @Autowired
-    InventoryCenterRepository centerRepository;
+    CenterRepository centerRepository;
 
     private int count(String sql) {
         Integer n = jdbc.queryForObject(sql, Integer.class);
@@ -136,8 +137,8 @@ class DatabaseSchemaTest {
         insertCenter("Gone", 0, 1, null);
         Integer deletedId = jdbc.queryForObject(
                 "SELECT center_id FROM center_info WHERE center_name = 'Gone'", Integer.class);
-        assertFalse(centerRepository.findByCenterIdAndDeleteFlag(deletedId, InventoryCenter.NOT_DELETED).isPresent());
-        assertTrue(centerRepository.findByCenterIdAndDeleteFlag(deletedId, InventoryCenter.DELETED).isPresent());
+        assertFalse(centerRepository.findByCenterIdAndDeleteFlag(deletedId, Center.NOT_DELETED).isPresent());
+        assertTrue(centerRepository.findByCenterIdAndDeleteFlag(deletedId, Center.DELETED).isPresent());
         // The unique constraint still covers logically deleted rows (requirements.md Q-5 is undecided).
         assertTrue(centerRepository.existsByCenterName("Gone"));
     }

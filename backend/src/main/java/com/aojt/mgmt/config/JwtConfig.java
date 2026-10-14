@@ -25,37 +25,63 @@ import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 
-/** RSA key material and JWT encoder/decoder (RS256). */
+/**
+ * JWT の RSA 鍵と、エンコーダー・デコーダー（RS256）の設定。
+ */
 @Configuration
 public class JwtConfig {
 
     private static final Logger log = LoggerFactory.getLogger(JwtConfig.class);
 
+    private static final String KEY_ALGORITHM = "RSA";
+    private static final int KEY_SIZE = 2048;
+    private static final String KEY_ID = "inventrack-key";
+
+    /**
+     * RSA 鍵ペアを用意する。PEM ファイルが設定されていれば読み込み、無ければ起動ごとに自動生成する（開発用）。
+     *
+     * @param properties JWT の設定
+     * @return 鍵ペア
+     * @throws GeneralSecurityException 鍵の生成・復元に失敗した場合
+     * @throws IOException 鍵ファイルの読み込みに失敗した場合
+     */
     @Bean
     KeyPair jwtKeyPair(JwtProperties properties) throws GeneralSecurityException, IOException {
         if (properties.hasConfiguredKeys()) {
-            KeyFactory factory = KeyFactory.getInstance("RSA");
+            KeyFactory factory = KeyFactory.getInstance(KEY_ALGORITHM);
             RSAPrivateKey privateKey = (RSAPrivateKey) factory.generatePrivate(
                     new PKCS8EncodedKeySpec(readPem(properties.privateKeyLocation())));
             RSAPublicKey publicKey = (RSAPublicKey) factory.generatePublic(
                     new X509EncodedKeySpec(readPem(properties.publicKeyLocation())));
             return new KeyPair(publicKey, privateKey);
         }
-        log.warn("No JWT key pair configured; generating an ephemeral RSA key pair (development only).");
-        KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
-        generator.initialize(2048);
+        log.warn("JWT の鍵が設定されていないため、起動ごとに RSA 鍵ペアを自動生成します（開発用）。");
+        KeyPairGenerator generator = KeyPairGenerator.getInstance(KEY_ALGORITHM);
+        generator.initialize(KEY_SIZE);
         return generator.generateKeyPair();
     }
 
+    /**
+     * トークン生成用のエンコーダー。
+     *
+     * @param keyPair 鍵ペア
+     * @return JWT エンコーダー
+     */
     @Bean
     JwtEncoder jwtEncoder(KeyPair keyPair) {
         RSAKey jwk = new RSAKey.Builder((RSAPublicKey) keyPair.getPublic())
                 .privateKey(keyPair.getPrivate())
-                .keyID("inventrack-key")
+                .keyID(KEY_ID)
                 .build();
         return new NimbusJwtEncoder(new ImmutableJWKSet<>(new JWKSet(jwk)));
     }
 
+    /**
+     * トークン検証用のデコーダー（公開鍵で署名を検証する）。
+     *
+     * @param keyPair 鍵ペア
+     * @return JWT デコーダー
+     */
     @Bean
     JwtDecoder jwtDecoder(KeyPair keyPair) {
         return NimbusJwtDecoder.withPublicKey((RSAPublicKey) keyPair.getPublic()).build();

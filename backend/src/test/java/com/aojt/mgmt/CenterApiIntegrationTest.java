@@ -22,10 +22,13 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+/**
+ * パッケージを横断する結合テスト。登録からトークンを取得し、在庫センター API を実際のセキュリティ設定と DB（H2）で検証する。
+ */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-class InventoryCenterApiTest {
+class CenterApiIntegrationTest {
 
     @Autowired
     MockMvc mvc;
@@ -67,7 +70,7 @@ class InventoryCenterApiTest {
     void listRequiresAuthentication() throws Exception {
         mvc.perform(get("/api/v1/centers"))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.error.code").value("UNAUTHORIZED"));
+                .andExpect(jsonPath("$.error.code").value("AUTH_ERROR"));
     }
 
     @Test
