@@ -1,0 +1,7 @@
+spring:
+  datasource:
+    # A fresh in-memory DB per Spring context so tests do not see each other's rows.
+    url: jdbc:h2:mem:inventrack-test-${random.uuid};DB_CLOSE_DELAY=-1
+  h2:
+    console:
+      enabled: false

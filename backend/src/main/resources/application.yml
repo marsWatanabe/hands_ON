@@ -1,0 +1,41 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: inventrack
+  datasource:
+    # README (original project): H2 file DB under ./target. Switch to the in-memory DB with:
+    #   url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1
+    url: jdbc:h2:file:./target/testdb;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    # Development only. Production (PostgreSQL, ADR-0003) must supply these from the environment.
+    username: sa
+    password: password
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+      settings:
+        web-allow-others: false
+  jpa:
+    hibernate:
+      # The schema is owned by Flyway; Hibernate only verifies that entities match it.
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false
+  flyway:
+    enabled: true
+    # db/migration: schema (all environments). db/seed-dev: sample data (development/test only).
+    # In production use only: classpath:db/migration
+    locations: classpath:db/migration,classpath:db/seed-dev
+
+app:
+  jwt:
+    issuer: inventrack
+    access-token-expiration: 15m
+    refresh-token-expiration: 7d
+    # When no key locations are set, an in-memory RSA key pair is generated at startup (development only).
+    # Tokens issued before a restart become invalid. In production, set PEM file locations:
+    #   private-key-location: file:/path/to/private_pkcs8.pem
+    #   public-key-location: file:/path/to/public.pem
