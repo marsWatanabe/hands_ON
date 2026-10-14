@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: inventrack
+  datasource:
+    url: jdbc:h2:mem:inventrack;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+app:
+  jwt:
+    issuer: inventrack
+    access-token-expiration: 15m
+    refresh-token-expiration: 7d
+    # When no key locations are set, an in-memory RSA key pair is generated at startup (development only).
+    # Tokens issued before a restart become invalid. In production, set PEM file locations:
+    #   private-key-location: file:/path/to/private_pkcs8.pem
+    #   public-key-location: file:/path/to/public.pem
+  seed-data: true
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
