@@ -6,7 +6,7 @@
 | リポジトリ | https://github.com/marsWatanabe/hands_ON（public、ブランチは `main` のみ） |
 | ローカル | `C:\Users\渡邉天\Documents\hands_ON`（VS Code のワークスペースでは、`seiseki-project-v0.15.0` とは別のルートフォルダ） |
 | 目的 | AIDD 開発コース ハンズオン Day1 の課題: 「在庫センター一覧取得 API」を、詳細設計から実装まで AI と進める |
-| 最新の状態 | `git log` で確認する。作業ツリーはクリーン |
+| 最新の状態 | `git log` と `git status` で確認する |
 
 このファイルを最初に読む。次に「4. 読む順序」の資料を読み、「7. 残作業」から着手する。
 
@@ -32,12 +32,14 @@
 
 ### 3.1 できていること
 
-- 認証（登録、ログイン、トークン更新、ユーザー取得）と在庫センター API（一覧、作成、編集、論理削除）。
+- 認証（登録、ログイン、トークン更新、ユーザー取得）と、在庫センター、カテゴリ、部品在庫、製品在庫の API（いずれも一覧、作成、編集、論理削除）。カテゴリ・部品在庫・製品在庫の詳細設計は `docs/detailed-design-stocks.md`。製品コードの列は V4 で追加。
 - Flyway で管理するスキーマ（`_user`、`category_info`、`center_info`、`parts_stock_info`、`products_stock_info`）と、開発用の初期データ。
 - 設計書: 要件定義、ER 図、詳細設計、非機能要件、レビュー報告書（すべて `docs/`）。
-- テスト 123 件が成功する。層ごとのユニットテスト（Controller、Service、Repository、Config）、結合テスト 13 件、DB スキーマテスト 12 件。命令カバレッジ 95.6%（`-Pcoverage`）。
+- テスト 278 件が成功する。層ごとのユニットテスト（Controller、Service、Repository、Config）、結合テスト 30 件（センター 19、カテゴリ・在庫 11）、DB スキーマテスト 12 件、デモデータテスト 6 件、開発用UIアクセステスト 4 件。命令カバレッジ 97.3%（`-Pcoverage`）。
 - パッケージは原典のドメイン単位、Javadoc とユーザー向けメッセージは日本語、エラーコードは原典に統一済み。
 - GitHub Actions: `CI`（`./mvnw verify -Pcoverage`）と `Copilot Setup Steps`。
+- **動作確認用の簡易画面**（http://localhost:8080/ → `/dev-ui/`）: 登録・ログイン、一覧・検索、登録・編集・削除、エラー確認用の入力例、通信ログ。`app.dev-ui.enabled`（既定 true、本番では false）。業務用の画面（`frontend/`）ではない。テストは 134 件。
+- **業務用フロントエンド**（`frontend/`、Next.js 15、Chakra UI）: ログイン、アカウント登録、在庫センター管理、部品在庫一覧、製品在庫一覧、カテゴリ管理（いずれも一覧、検索、並び替え、ページ送り、登録、編集、削除）。設計は `docs/frontend-centers-design.md`。単体テスト 109 件と E2E 46 件（Playwright）。`npm run lint`、`typecheck`、`build` が通る。トークンは原典どおり Cookie に保存している（既知の制限。設計書第 7 章）。
 - 起動、Swagger UI、H2 コンソール、`flyway:info` の確認済み。
 
 ### 3.2 構成
@@ -45,12 +47,14 @@
 ```
 hands_ON/
 ├── backend/                  # Spring Boot（com.aojt.mgmt）。ここで mvnw を実行する
-│   ├── src/main/java/...     # config, controller/{auth,user,center}, service/{auth,jwt,center},
+│   ├── src/main/java/...     # config, controller/{auth,user,center,category,stock}, service/{auth,jwt,center,category,stock,common},
 │   │                         # repository/{user,center}, model, dto/{auth,user,center,common}, exception
 │   ├── src/main/resources/application.yml
 │   ├── src/main/resources/db/migration/V1__initial.sql   # スキーマ
-│   ├── src/main/resources/db/seed-dev/V2__seed_dev_data.sql  # 開発用データ
+│   ├── src/main/resources/db/seed-dev/V2__seed_dev_data.sql  # 最小の開発用データ（センター 3 件。テストも使う）
+│   ├── src/main/resources/db/seed-demo/V3__seed_demo_data.sql  # デモデータ（センターを 22 件に。開発のみ、テストは読み込まない）
 │   └── src/test/...          # 層ごとのユニットテスト、CenterApiIntegrationTest、repository/DatabaseSchemaTest
+├── frontend/                 # Next.js。ここで npm を実行する。app/{centers,login,register,components,contexts,hooks,lib,types}、tests/{unit,e2e}
 ├── docs/                     # 設計書
 ├── .github/                  # copilot-instructions.md、workflows（CI、Copilot Setup Steps）、ISSUE_TEMPLATE
 └── README.md                 # 手順（原典の README を基準にしている）
@@ -67,6 +71,19 @@ cd C:\Users\渡邉天\Documents\hands_ON\backend
 
 - カバレッジの検査（`-Pcoverage`）は、この PC（ユーザー名が日本語）では ASCII のドライブが必要: `subst X: C:\Users\渡邉天\Documents\hands_ON; cd X:\backend; .\mvnw.cmd verify -Pcoverage; cd C:\; subst X: /D`。
 
+フロントエンド（バックエンドを起動してから）:
+
+```powershell
+cd C:\Users\渡邉天\Documents\hands_ON\frontend
+Copy-Item .env.sample .env.local   # 初回のみ
+npm install                        # 初回のみ。ロックファイルどおりなら npm ci
+npm run dev                        # http://localhost:3000
+npm run lint; npm run typecheck; npm run build
+npm run test:unit                  # 単体テスト
+npx playwright install chromium    # 初回のみ
+npm run test:e2e                   # E2E（バックエンドが必要）
+```
+
 - 手順は `README.md` の「環境構築」「DB マイグレーション」を基準にする。**変更しない**（合意済み）。
 - ログイン方法: Swagger の `POST /api/v1/auth/register` でユーザーを登録し、`accessToken` を **Authorize** に貼る（`Bearer ` は付けない）。
 
@@ -76,9 +93,10 @@ cd C:\Users\渡邉天\Documents\hands_ON\backend
 2. `README.md`
 3. `docs/requirements.md`（要件、業務ルール、**未決事項と原典の不整合の一覧**）
 4. `docs/er-diagram.md`（ER 図、テーブル設計、原典との差分）
-5. `docs/detailed-design.md`（在庫センター API の詳細設計、原典との差分表 第 8 章）
+5. `docs/detailed-design.md`（在庫センター API の詳細設計、原典との差分表 第 8 章）と `docs/detailed-design-stocks.md`（カテゴリ・部品在庫・製品在庫 API）
 6. `docs/non-functional-requirements.md`
 7. `docs/review/backend-review-centers.md`（レビュー指摘。冒頭の訂正を先に読む）
+   `docs/review/test-scope-and-production-considerations-20261021.md`（テスト範囲と本番向け検討項目。現状は開発用で、本番に出す前の対応をまとめている）
 8. 原典 zip の `docs/api-interface-spec.md`、`docs/screen-specifications.md`、`docs/table-definitions.md`、`adr/`、`.github/copilot-instructions.md`、`.github/instructions/`
 
 `docs/detailed-design.md` は、スライドの「出力: api_design.md」に相当する。名前を `api_design.md` にする必要があれば、リネームする。
@@ -99,6 +117,11 @@ cd C:\Users\渡邉天\Documents\hands_ON\backend
 | JWT の鍵 | 起動ごとに自動生成（開発用）。再起動したらトークンを取り直す |
 | テストのデータ分離 | テストは `application-test.yml`（プロファイル `test`）で、コンテキストごとに独立したインメモリ DB を使う |
 | 日本語を含むコマンド | PowerShell への日本語の直接入力は、コミットメッセージなどで文字化けする。ファイルはエディタ系のツールで書く |
+| 適用済みの Flyway SQL を編集すると起動に失敗する（`Migration checksum mismatch`） | コメントの修正でもチェックサムが変わる。適用済みのファイルは編集しない。誤って編集した場合、この PC では `.\mvnw.cmd flyway:repair` が DB に反映されなかった（H2 のファイル DB の終了処理が Maven の JVM で失敗するため）。アプリを止めて、H2 の RunScript で `UPDATE "flyway_schema_history" SET "checksum" = <ログの Resolved locally の値> WHERE "version" = '<版>'` を実行して直した。または `backend/target/testdb.mv.db` を削除して作り直す |
+| `npm ci` が EUSAGE で失敗する | 原典の `package-lock.json` は、macOS で作られ、他 OS 用のオプションパッケージ（sharp など）が欠けていた。`npm install` で再生成して解消済み（依存のバージョン範囲は変えていない）。変更したときは `npm ci --dry-run` で確認する |
+| `npm install` が遅い | 初回は 5 分前後かかることがある（Windows）。`allowScripts` の警告（sharp、unrs-resolver）は無視してよい |
+| E2E がすべて失敗する | バックエンドが起動していない（`http://localhost:8080`）。先に `.\mvnw.cmd spring-boot:run` を実行する。初回は `npx playwright install chromium` が必要 |
+| Next.js の「multiple lockfiles」警告 | 上位フォルダーに別の `package-lock.json` がある。`next.config.mjs` の `outputFileTracingRoot` で解消済み |
 
 ## 6. 原典との差分（現状）
 
@@ -126,8 +149,15 @@ cd C:\Users\渡邉天\Documents\hands_ON\backend
 - [x] JaCoCo の命令カバレッジ 80% の検査（プロファイル `coverage`、CI で毎回実行）。
 - [ ] PostgreSQL での検証（Flyway、検索、制約）と本番用の設定。**要承認**: PostgreSQL の JDBC ドライバ（`org.postgresql:postgresql`）と Flyway の PostgreSQL モジュール（`flyway-database-postgresql`）を追加する必要がある。この PC には Docker が無いため、検証は GitHub Actions の PostgreSQL サービスコンテナで行う案。本番用設定は `application-prod.yml`（`spring.flyway.locations` を `classpath:db/migration` のみ、Swagger と H2 コンソールを無効、ログを INFO、鍵を固定、DB 接続を環境変数）。
 - [ ] 入力エラーの項目別表示（`error.details`）。**API 契約の変更なので要承認**。
-- [ ] カテゴリ、部品在庫、製品在庫の API（`docs/detailed-design.md` 第 9 章の案）。エンティティも作る。
-- [ ] フロントエンド（`frontend/`）: 在庫センター画面（一覧、検索、新規・編集・削除）。原典の `frontend/` が土台（Next.js、Chakra UI）。画面仕様の不整合（`requirements.md` C-4、C-9、C-10）を先に整理する。
+- [x] カテゴリ、部品在庫、製品在庫の API（`docs/detailed-design-stocks.md`）。エンティティ、画面も作成済み。製品コード（V4）、名称の重複禁止はセンター内、使用中カテゴリは削除・種別変更不可、は仮決定（設計書第 7 章）。
+  - [ ] 横断検索 API（`GET /api/v1/stocks/search`。想定のみ、未実装）。
+  - [ ] カテゴリ画面の CSV 一括登録（要件未定義。Q-8）。
+  - [ ] カテゴリ名・在庫の名称の重複禁止を DB でも保証するか決める。現在は**アプリ層の事前照合だけ**で、同時リクエストの競合を防げない（製品コードだけ DB の一意制約）。スキーマ変更になるため**要承認**（`docs/detailed-design-stocks.md` 第 6.1 章）。
+  - [ ] センター詳細画面（センターからその在庫への導線）。API は `centerId` で絞り込み済み。
+- [x] フロントエンド（`frontend/`）: 在庫センター画面（一覧、検索、新規・編集・削除）。原典の `frontend/` を土台にした。画面仕様の不整合 C-4、C-9、C-10 は仮決定し、`requirements.md` 第 7 章に追記した（住所は画面で結合・分割、初期ソートは `centerId` 降順、操作列あり）。
+  - [ ] フロントエンドの E2E を CI で実行する（バックエンドを CI で起動する必要がある。いまはローカルのみ）。
+  - [ ] トークンの保存を HttpOnly Cookie（BFF）にするかを決める（NFR-SEC-03。設計の変更）。
+  - [ ] 他の画面（ダッシュボード、操作履歴、アカウント）は、API と要件が定まってから作る。
 - [ ] 操作履歴、ダッシュボードの要件を決めてから実装する（未定義）。
 - [ ] 非機能の優先対応（`docs/non-functional-requirements.md` 第 9 章）。
 
@@ -156,7 +186,7 @@ cd C:\Users\渡邉天\Documents\hands_ON\backend
 | 楽観ロック | `version` 列の追加 | M-2 |
 | カテゴリ名のユニーク制約 | 種別内で一意にするか | BR-03 |
 | 製品コード | 製品在庫に列を追加するか | C-5 |
-| 住所の分割 | 画面は都道府県などに分割、DB は 1 列 | C-4 |
+| 住所の分割 | 画面は都道府県などに分割、DB は 1 列。**仮決定**: 画面で結合・簡易判定で分割（`docs/frontend-centers-design.md` 第 4 章）。列を分けるなら要承認 | C-4 |
 | Lombok の採用 | 原典は使用。新規依存の扱い | — |
 
 質問の全体と選択肢は `docs/requirements.md` 第 7 章にある。

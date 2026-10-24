@@ -11,33 +11,37 @@
 hands_ON/
 ├── backend/                 # Spring Boot バックエンド
 │   ├── src/main/java/       # Java ソース（com.aojt.mgmt）
-│   │   ├── config/ controller/{auth,user,center}/ service/{auth,jwt,center}/
-│   │   ├── repository/{user,center}/ model/ dto/{auth,user,center,common}/ exception/
+│   │   ├── config/ controller/{auth,user,center,category,stock}/ service/{auth,jwt,center,category,stock,common}/
+│   │   ├── repository/{user,center,category,stock,common}/ model/ dto/{auth,user,center,category,stock,common}/ exception/
 │   ├── src/main/resources/
 │   │   ├── application.yml
 │   │   └── db/
 │   │       ├── migration/   # Flyway マイグレーション（スキーマ。全環境）
-│   │       └── seed-dev/    # 開発・テスト用の初期データ
+│   │       ├── seed-dev/    # 開発・テスト用の最小の初期データ（センター 3 件）
+│   │       └── seed-demo/   # 動作確認用のデモデータ（センターを 22 件に増やす。開発のみ、テストは読み込まない）
 │   └── pom.xml
 ├── docs/                    # 設計書
 │   ├── requirements.md              # 要件定義書
 │   ├── er-diagram.md                # ER 図・テーブル設計
 │   ├── detailed-design.md           # 詳細設計書（在庫センター API）
+│   ├── frontend-centers-design.md   # フロントエンド設計（在庫センター管理画面）
 │   ├── non-functional-requirements.md  # 非機能要件
 │   └── review/                      # レビュー報告書
 ├── .github/                 # Copilot 指示、CI、Issue テンプレート
-└── frontend/                # Next.js フロントエンド（未作成）
+└── frontend/                # Next.js フロントエンド（在庫センター管理画面、ログイン・登録）
+    ├── app/                 # ページ、コンポーネント、hooks、lib（API クライアント、検証）、types
+    └── tests/               # unit（ブラウザ不要）と e2e（Chromium）
 ```
 
 ## 技術スタック
 
 - Backend: Java 21、Spring Boot 3.5、Spring Security（JWT）、Spring Data JPA、Flyway、H2（開発）、PostgreSQL（本番想定）、SpringDoc（OpenAPI）、JUnit 5
-- Frontend: Next.js、TypeScript、Chakra UI、Playwright（未作成）
+- Frontend: Next.js 15、React 19、TypeScript、Chakra UI、Zod、Playwright
 
 ## 開発を始める前に
 
 - **JDK 21 以上**が必要。`java -version` で確認する（この環境では JDK 26 でもビルドと起動を確認済み。ビルドは Java 21 向け）。
-- フロントエンドを作る際は Node.js 20 以上が必要。
+- フロントエンドには Node.js 20 以上が必要（確認済み: Node.js 24、npm 11）。
 
 ## 環境構築
 
@@ -59,7 +63,31 @@ cd backend
 
 ### Frontend
 
-未作成。
+在庫センター管理、部品在庫一覧、製品在庫一覧、カテゴリ管理（いずれも一覧、検索、並び替え、登録、編集、削除）と、ログイン・アカウント登録。設計は [docs/frontend-centers-design.md](docs/frontend-centers-design.md)。
+
+1. **先にバックエンドを起動する**（上の Backend の手順 4）。
+2. `cd frontend` で frontend ディレクトリに移動する。
+3. `.env.sample` を `.env.local` にコピーする（`BACKEND_API_URL` は既定で `http://localhost:8080`）。
+4. `npm install`（ロックファイルどおりに入れるなら `npm ci`）。
+5. `npm run dev` で開発サーバーを起動する。
+6. http://localhost:3000 を開く。「新規登録」でユーザーを作るか、登録済みのユーザーでログインする。
+
+```bash
+$ cd frontend
+$ cp .env.sample .env.local     # PowerShell: Copy-Item .env.sample .env.local
+$ npm install
+$ npm run dev
+```
+
+この画面はバックエンドを直接呼ばず、同じオリジン（`/api/...`）を Next.js がバックエンドへ転送する。バックエンドを再起動したら、トークンの署名鍵が変わるため、ログインし直す。
+
+ビルドと Lint:
+
+```bash
+$ npm run lint
+$ npm run typecheck
+$ npm run build
+```
 
 ## ログイン方法
 
@@ -70,6 +98,15 @@ cd backend
 
 トークンは起動のたびに作り直される鍵で署名される（開発用）。再起動したら、ログインし直す。
 
+## 動作確認用の画面（開発用）
+
+ブラウザで API を試せる簡易画面。バックエンドを起動し、http://localhost:8080/ を開く（`/dev-ui/index.html` へ転送される）。
+
+- できること: ユーザー登録・ログイン・トークン更新、在庫センターの一覧（検索、並び替え、ページング）、新規登録・編集・削除、エラー確認用の入力例（重複、文字数超過、形式不正、容量超過）、通信ログ（ステータスと本文。トークンとパスワードは表示しない）。
+- ファイル: `backend/src/main/resources/static/dev-ui/`（HTML、CSS、JavaScript。フレームワークなし）。
+- 公開範囲: `app.dev-ui.enabled=true`（`application.yml` の既定）のときだけ未認証で開ける。本番では `false` にする（認証が必要になり、開けなくなる）。API の認証は変わらない。
+- 注意: これは開発用の確認画面。業務用の画面は `frontend/`（Next.js）。
+
 ## DB マイグレーション
 
 H2 Database を使用して Flyway でマイグレーションを管理する。スキーマは Flyway だけが変更し、Hibernate は `ddl-auto=validate` でエンティティとの一致を検証するだけである。
@@ -79,7 +116,7 @@ H2 Database を使用して Flyway でマイグレーションを管理する。
    - JDBC URL は `jdbc:h2:file:./target/testdb;DB_CLOSE_DELAY=-1` を設定する。
 2. マイグレーションファイルは `backend/src/main/resources/db/migration/` に作成する。
    - 命名規則は `V1__initial.sql` のように、バージョン番号と説明を含める（現在は `V1__initial.sql`）。
-   - 開発・テスト用の初期データは `db/seed-dev/`（現在は `V2__seed_dev_data.sql`）に置く。本番では `spring.flyway.locations` を `classpath:db/migration` だけにして読み込まない。
+   - 開発・テスト用の初期データは `db/seed-dev/`（現在は `V2__seed_dev_data.sql`）に置く。動作確認用のデモデータ（センター 22 件と紐づく在庫）は `db/seed-demo/`（`V3__seed_demo_data.sql`。開発だけで読み込み、テストは読み込まない）。本番では `spring.flyway.locations` を `classpath:db/migration` だけにして読み込まない。
 3. アプリ起動時に自動でスキーマが適用される。
 
 **備考**
@@ -100,13 +137,13 @@ $ ./mvnw flyway:migrate
 
 ### Backend
 
-JUnit を使用してテストを実行する。テストはプロファイル `test`（テストごとに独立したインメモリ H2）で動く。Controller、Service、Repository、Config の層ごとのユニットテストと、結合テスト、DB スキーマテストがある（計 123 件）。
+JUnit を使用してテストを実行する。テストはプロファイル `test`（テストごとに独立したインメモリ H2）で動く。Controller、Service、Repository、Config の層ごとのユニットテストと、結合テスト、DB スキーマテストがある（計 278 件）。
 
 ```bash
 $ ./mvnw test
 ```
 
-カバレッジ（命令カバレッジ 80% 以上。現在 95.6%）を検査する場合は、プロファイル `coverage` を付ける。レポートは `target/site/jacoco/index.html`。CI（GitHub Actions）では毎回これを実行する。
+カバレッジ（命令カバレッジ 80% 以上。現在 97.3%）を検査する場合は、プロファイル `coverage` を付ける。レポートは `target/site/jacoco/index.html`。CI（GitHub Actions）では毎回これを実行する。
 
 ```bash
 $ ./mvnw verify -Pcoverage
@@ -123,7 +160,16 @@ subst X: /D
 
 ### Frontend
 
-未作成。
+Playwright Test を使う。初回だけ、E2E 用のブラウザを入れる（`npx playwright install chromium`）。
+
+```bash
+$ npm run test:unit    # 単体テスト（ブラウザとバックエンドは不要。CI でも実行）
+$ npm run test:e2e     # E2E（Chromium）。バックエンドを起動してから実行する
+```
+
+- `test:e2e` は開発サーバー（http://localhost:3000）を自動で起動する（起動済みならそれを使う）。バックエンド（既定 http://localhost:8080）は自動では起動しない。
+- E2E はテストごとに新しいユーザーと一意なセンター名を作り、作ったセンターは削除する。ユーザーは開発用 DB に残る（DB を作り直すには、「DB マイグレーション」の手順）。
+- 単体テスト 109 件、E2E 46 件。
 
 ## ドキュメント
 
@@ -132,6 +178,8 @@ subst X: /D
 - **`docs/requirements.md`**: 要件定義書
 - **`docs/er-diagram.md`**: ER 図・テーブル設計
 - **`docs/detailed-design.md`**: 詳細設計書（在庫センター API）
+- **`docs/frontend-centers-design.md`**: フロントエンド設計（在庫センター、カテゴリ、部品在庫、製品在庫の画面）
+- **`docs/detailed-design-stocks.md`**: 詳細設計書（カテゴリ・部品在庫・製品在庫 API）
 - **`docs/non-functional-requirements.md`**: 非機能要件
 - **`docs/review/backend-review-centers.md`**: レビュー報告書
 

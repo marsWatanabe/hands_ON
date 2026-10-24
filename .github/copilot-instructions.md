@@ -6,7 +6,7 @@
 ## プロジェクト
 
 - ドローン部品・製品管理システム Inventrack。バックエンドは `backend/`（Java 21、Spring Boot 3.5、Spring Security（JWT）、Spring Data JPA、Flyway、H2、SpringDoc）。
-- フロントエンド（`frontend/`）は未作成。Issue で指示されるまで作らない。
+- フロントエンド（`frontend/`）は Next.js 15、React 19、Chakra UI、TypeScript、Zod、Playwright。設計は `docs/frontend-centers-design.md`。変更後は `cd frontend; npm run lint; npm run typecheck; npm run test:unit; npm run build` を実行する。新しい画面は Issue で指示されたときだけ作る。
 - 設計書は `docs/`。作業前に、関連する設計書を読む。
 
 ## ビルド・テスト（変更後に必ず実行する）
@@ -63,7 +63,7 @@ cd backend
 
 - スキーマの変更は Flyway だけで行う。Hibernate の `ddl-auto` は `validate` のまま。
 - 型は H2 と PostgreSQL の両方で動くものにする（`TINYINT` は使わず `SMALLINT`、`DATETIME` は使わず `TIMESTAMP`）。
-- 開発用データは `db/seed-dev/` に置く。`db/migration/` に入れない。
+- 開発用データは `db/seed-dev/`（最小、テストも使う）と `db/seed-demo/`（動作確認用、テストは読み込まない）に置く。`db/migration/` に入れない。
 
 ## PR・Issue・コミット
 
