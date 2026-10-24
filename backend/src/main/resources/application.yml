@@ -26,11 +26,15 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
-    # db/migration: schema (all environments). db/seed-dev: sample data (development/test only).
+    # db/migration: schema (all environments). db/seed-dev: minimal sample data (development/test only).
+    # db/seed-demo: demo data for manual checks (development only; tests exclude it in application-test.yml).
     # In production use only: classpath:db/migration
-    locations: classpath:db/migration,classpath:db/seed-dev
+    locations: classpath:db/migration,classpath:db/seed-dev,classpath:db/seed-demo
 
 app:
+  # Development-only test screen served at /dev-ui/ (static files). Set to false in production.
+  dev-ui:
+    enabled: true
   jwt:
     issuer: inventrack
     access-token-expiration: 15m

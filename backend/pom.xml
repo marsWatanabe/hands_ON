@@ -87,6 +87,7 @@
           <locations>
             <location>filesystem:src/main/resources/db/migration</location>
             <location>filesystem:src/main/resources/db/seed-dev</location>
+            <location>filesystem:src/main/resources/db/seed-demo</location>
           </locations>
         </configuration>
         <dependencies>

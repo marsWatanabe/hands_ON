@@ -5,3 +5,6 @@ spring:
   h2:
     console:
       enabled: false
+  flyway:
+    # Tests use the schema and the minimal seed (3 centers) only; seed-demo (22 centers) is for manual checks.
+    locations: classpath:db/migration,classpath:db/seed-dev

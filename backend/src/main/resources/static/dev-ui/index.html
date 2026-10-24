@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Inventrack 動作確認用画面</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Inventrack 動作確認用画面</h1>
+    <p class="note">開発用の簡易画面です（<code>app.dev-ui.enabled=true</code> のときだけ表示されます）。API の動作確認が目的で、業務用の画面ではありません。</p>
+  </header>
+
+  <!-- ログイン状態バー（常に上部に固定。各操作の送信前にここで状態を確認する） -->
+  <div id="auth-bar" class="auth-bar off" role="status" aria-live="polite">
+    <div class="auth-bar-inner">
+      <span id="auth-badge" class="badge off">未ログイン</span>
+      <span id="auth-user" class="auth-detail"></span>
+      <span id="auth-expiry" class="auth-detail"></span>
+      <label class="switch">
+        <input id="send-token" type="checkbox" checked>
+        <span>API にトークンを付けて送る</span>
+      </label>
+      <span id="auth-effective" class="chip off">送信: トークンなし</span>
+    </div>
+  </div>
+
+  <main>
+    <!-- 1. 認証 -->
+    <section aria-labelledby="h-auth">
+      <h2 id="h-auth">1. 認証</h2>
+      <p id="session" class="status" role="status">未ログイン</p>
+      <form id="auth-form" autocomplete="off">
+        <div class="grid">
+          <label>メールアドレス<input id="email" type="text" value="taro@example.com"></label>
+          <label>パスワード（8〜72文字）<input id="password" type="password" value="password123"></label>
+          <label>名（登録時）<input id="firstname" type="text" value="Taro"></label>
+          <label>姓（登録時）<input id="lastname" type="text" value="Yamada"></label>
+        </div>
+        <div class="buttons">
+          <button type="button" id="btn-register">ユーザー登録</button>
+          <button type="button" id="btn-login">ログイン</button>
+          <button type="button" id="btn-refresh">トークン更新</button>
+          <button type="button" id="btn-logout" class="secondary">ログアウト</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- 2. 一覧・検索 -->
+    <section aria-labelledby="h-list" class="api-section">
+      <h2 id="h-list">2. 在庫センター一覧 <span class="chip off" data-auth-chip>送信: トークンなし</span></h2>
+      <form id="search-form">
+        <div class="grid">
+          <label>センター名（部分一致）<input id="s-name" type="text" maxlength="40"></label>
+          <label>住所（部分一致）<input id="s-address" type="text" maxlength="120"></label>
+          <label>稼働状況
+            <select id="s-status">
+              <option value="">すべて</option>
+              <option value="0">0: 稼働中</option>
+              <option value="1">1: 稼働停止</option>
+            </select>
+          </label>
+          <label>並び替え
+            <select id="s-sort"></select>
+          </label>
+          <label>順序
+            <select id="s-order">
+              <option value="desc">降順（desc）</option>
+              <option value="asc">昇順（asc）</option>
+            </select>
+          </label>
+          <label>1 ページの件数
+            <select id="s-size">
+              <option>5</option><option>10</option><option selected>20</option><option>50</option><option>100</option>
+            </select>
+          </label>
+        </div>
+        <div class="buttons">
+          <button type="submit">検索</button>
+          <button type="button" id="btn-clear" class="secondary">条件をクリア</button>
+        </div>
+      </form>
+
+      <p id="message" class="message" role="alert" hidden></p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th><th>センター名</th><th>住所</th><th>電話番号</th><th>管理者名</th>
+              <th>状況</th><th class="num">最大(m³)</th><th class="num">現在(m³)</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="rows">
+            <tr><td colspan="9" class="empty">検索すると結果が表示されます。</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="pager">
+        <button type="button" id="btn-prev" class="secondary">前へ</button>
+        <span id="page-info">-</span>
+        <button type="button" id="btn-next" class="secondary">次へ</button>
+        <label class="inline">ページ番号を指定
+          <input id="page-input" type="number" min="1" value="1">
+          <button type="button" id="btn-goto" class="secondary">移動</button>
+        </label>
+      </div>
+    </section>
+
+    <!-- 3. 登録・編集 -->
+    <section aria-labelledby="h-form" class="api-section">
+      <h2 id="h-form">3. 登録・編集 <span class="chip off" data-auth-chip>送信: トークンなし</span></h2>
+      <p id="form-mode" class="status">新規登録</p>
+      <div class="presets">
+        <label>入力例を読み込む（エラー確認用）
+          <select id="preset">
+            <option value="">選択してください</option>
+            <option value="ok">正常な入力</option>
+            <option value="dup">センター名が重複（東京センター）</option>
+            <option value="longName">センター名が21文字（400）</option>
+            <option value="badPost">郵便番号の形式が不正（400）</option>
+            <option value="badPhone">電話番号の形式が不正（400）</option>
+            <option value="over">現在容量が最大容量を超過（400）</option>
+            <option value="script">&lt; を含む名称（400）</option>
+          </select>
+        </label>
+      </div>
+      <form id="center-form" autocomplete="off">
+        <div class="grid">
+          <label>センター名（必須・20文字以内）<input name="centerName" type="text"></label>
+          <label>郵便番号（必須・123-4567）<input name="postCode" type="text"></label>
+          <label>住所（必須）<input name="address" type="text"></label>
+          <label>電話番号（必須・03-1234-5678）<input name="phoneNumber" type="text"></label>
+          <label>管理者名（必須）<input name="managerName" type="text"></label>
+          <label>稼働状況（必須）
+            <select name="operationalStatus">
+              <option value="0">0: 稼働中</option>
+              <option value="1">1: 稼働停止</option>
+            </select>
+          </label>
+          <label>最大保管容量（m³・任意）<input name="maxStorageCapacity" type="text" inputmode="numeric"></label>
+          <label>現在保管容量（m³・任意）<input name="currentStorageCapacity" type="text" inputmode="numeric"></label>
+          <label class="wide">備考<input name="notes" type="text"></label>
+        </div>
+        <div class="buttons">
+          <button type="submit" id="btn-save">登録</button>
+          <button type="button" id="btn-reset" class="secondary">フォームをクリア</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- 4. 通信ログ -->
+    <section aria-labelledby="h-log">
+      <h2 id="h-log">4. 通信ログ（直近 30 件・新しい順）</h2>
+      <p class="note">リクエストと、サーバーが返したステータスと本文をそのまま表示します。トークンは表示しません。</p>
+      <div class="buttons"><button type="button" id="btn-clear-log" class="secondary">ログをクリア</button></div>
+      <pre id="log" aria-live="polite"></pre>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
