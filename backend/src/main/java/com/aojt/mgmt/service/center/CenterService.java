@@ -14,8 +14,8 @@ import java.util.Map;
 import java.util.Set;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -32,6 +32,9 @@ public class CenterService {
 
     /** 同じ値が並んでもページ間で順序が変わらないようにする、第 2 ソートキー。 */
     private static final String TIE_BREAKER = "centerId";
+
+    /** Hibernate が整数で扱えるページオフセットの上限。 */
+    private static final long MAX_JPA_OFFSET = Integer.MAX_VALUE;
 
     /** 削除成功時のレスポンスのキーと値。 */
     private static final Map<String, String> DELETE_SUCCESS = Map.of("result", "success");
@@ -61,10 +64,14 @@ public class CenterService {
      */
     @Transactional(readOnly = true)
     public PageResponse<CenterResponse> search(CenterSearchRequest request) {
+        Specification<Center> specification = CenterSpecifications.search(
+                request.getCenterName(), request.getAddress(), request.getOperationalStatus());
+        Sort sort = toSort(request);
+        if (exceedsJpaOffset(request)) {
+            return PageResponse.empty(repository.count(specification), request.getPage(), request.getSize());
+        }
         Page<CenterResponse> page = repository
-                .findAll(CenterSpecifications.search(
-                        request.getCenterName(), request.getAddress(), request.getOperationalStatus()),
-                        toPageable(request))
+                .findAll(specification, PageRequest.of(request.getPage() - 1, request.getSize(), sort))
                 .map(CenterResponse::from);
         return PageResponse.of(page);
     }
@@ -161,14 +168,7 @@ public class CenterService {
         center.setNotes(r.notes());
     }
 
-    /**
-     * ページングとソートを組み立てる。ソート項目は許可リストで検証する。
-     *
-     * @param request 検索リクエスト
-     * @return ページング条件（ページ番号は 0 始まりに変換する）
-     * @throws BusinessException ソート項目が許可リストに無い場合
-     */
-    private static Pageable toPageable(CenterSearchRequest request) {
+    private static Sort toSort(CenterSearchRequest request) {
         if (!SORTABLE_FIELDS.contains(request.getSort())) {
             throw new BusinessException(MSG_INVALID_SORT);
         }
@@ -177,6 +177,11 @@ public class CenterService {
         if (!TIE_BREAKER.equals(request.getSort())) {
             sort = sort.and(Sort.by(Sort.Direction.ASC, TIE_BREAKER));
         }
-        return PageRequest.of(request.getPage() - 1, request.getSize(), sort);
+        return sort;
+    }
+
+    private static boolean exceedsJpaOffset(CenterSearchRequest request) {
+        long offset = ((long) request.getPage() - 1) * request.getSize();
+        return offset > MAX_JPA_OFFSET;
     }
 }

@@ -143,6 +143,25 @@ class CenterServiceTest {
         verify(repository, never()).findAll(any(Specification.class), any(Pageable.class));
     }
 
+    /** JPA の整数オフセット上限を超えるページは、検索を発行せず空の一覧と総件数を返すこと。 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void search_returnsEmptyPageWhenOffsetExceedsJpaLimit() {
+        CenterSearchRequest request = new CenterSearchRequest();
+        request.setPage(21_474_838);
+        request.setSize(100);
+        when(repository.count(any(Specification.class))).thenReturn(3L);
+
+        PageResponse<CenterResponse> result = service.search(request);
+
+        assertTrue(result.data().isEmpty());
+        assertEquals(3, result.meta().total());
+        assertEquals(21_474_838, result.meta().page());
+        assertEquals(100, result.meta().size());
+        assertEquals(1, result.meta().totalPages());
+        verify(repository, never()).findAll(any(Specification.class), any(Pageable.class));
+    }
+
     // ---- create ----
 
     /** 重複が無ければ保存し、保存結果を返すこと。 */

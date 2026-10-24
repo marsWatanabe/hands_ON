@@ -63,7 +63,7 @@ public class CenterSearchRequest {
      * @param centerName センター名
      */
     public void setCenterName(String centerName) {
-        this.centerName = centerName;
+        this.centerName = normalizeSearchText(centerName);
     }
 
     /**
@@ -81,7 +81,7 @@ public class CenterSearchRequest {
      * @param address 住所
      */
     public void setAddress(String address) {
-        this.address = address;
+        this.address = normalizeSearchText(address);
     }
 
     /**
@@ -172,5 +172,13 @@ public class CenterSearchRequest {
      */
     public void setOrder(String order) {
         this.order = order;
+    }
+
+    private static String normalizeSearchText(String value) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.trim();
+        return normalized.isEmpty() ? null : normalized;
     }
 }

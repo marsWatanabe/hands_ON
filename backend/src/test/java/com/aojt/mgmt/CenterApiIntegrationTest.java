@@ -2,6 +2,8 @@ package com.aojt.mgmt;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -149,6 +151,120 @@ class CenterApiIntegrationTest {
                 .andExpect(jsonPath("$.data", hasSize(2)))
                 .andExpect(jsonPath("$.data[0].maxStorageCapacity").value(6000))
                 .andExpect(jsonPath("$.meta.size").value(2));
+    }
+
+    @Test
+    void listHandlesPageOffsetsBeyondJpaIntegerLimit() throws Exception {
+        int[] pages = {21_474_837, 21_474_838, Integer.MAX_VALUE};
+        int[] sizes = {100, 100, 1};
+        for (int i = 0; i < pages.length; i++) {
+            mvc.perform(get("/api/v1/centers").param("page", Integer.toString(pages[i]))
+                            .param("size", Integer.toString(sizes[i]))
+                            .header(HttpHeaders.AUTHORIZATION, bearer(accessToken)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data", hasSize(0)))
+                    .andExpect(jsonPath("$.meta.total").value(3))
+                    .andExpect(jsonPath("$.meta.page").value(pages[i]));
+        }
+    }
+
+    @Test
+    void listKeepsEmptyResultMetaAtZeroPages() throws Exception {
+        mvc.perform(get("/api/v1/centers").param("centerName", "存在しない名前")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data", hasSize(0)))
+                .andExpect(jsonPath("$.meta.total").value(0))
+                .andExpect(jsonPath("$.meta.totalPages").value(0));
+    }
+
+    @Test
+    void listNormalizesSearchWhitespaceBeforeValidation() throws Exception {
+        mvc.perform(get("/api/v1/centers").param("centerName", "  " + "あ".repeat(20))
+                        .param("address", "  東京都  ")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken)))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/centers").param("centerName", "  " + "あ".repeat(21))
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void listSortsEverySupportedFieldInBothDirections() throws Exception {
+        String[] fields = {"centerId", "centerName", "address", "operationalStatus",
+                "maxStorageCapacity", "currentStorageCapacity", "createDate", "updateDate"};
+        for (String field : fields) {
+            for (String order : new String[] {"asc", "desc"}) {
+                String body = mvc.perform(get("/api/v1/centers").param("sort", field).param("order", order)
+                                .param("size", "100")
+                                .header(HttpHeaders.AUTHORIZATION, bearer(accessToken)))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.data", hasSize(3)))
+                        .andReturn().getResponse().getContentAsString();
+                var data = objectMapper.readTree(body).get("data");
+                for (int i = 1; i < data.size(); i++) {
+                    var previous = data.get(i - 1);
+                    var current = data.get(i);
+                    int comparison = compareSortValues(previous, current, field);
+                    if (comparison == 0) {
+                        assertTrue(previous.get("centerId").asInt() < current.get("centerId").asInt());
+                    } else if ("asc".equals(order)) {
+                        assertTrue(comparison < 0, field + " should be ascending");
+                    } else {
+                        assertTrue(comparison > 0, field + " should be descending");
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    void listUsesStableTieBreakerAcrossPages() throws Exception {
+        String first = mvc.perform(get("/api/v1/centers").param("sort", "operationalStatus")
+                        .param("order", "asc").param("page", "1").param("size", "2")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String second = mvc.perform(get("/api/v1/centers").param("sort", "operationalStatus")
+                        .param("order", "asc").param("page", "2").param("size", "2")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+
+        assertEquals(1, objectMapper.readTree(first).get("data").get(0).get("centerId").asInt());
+        assertEquals(2, objectMapper.readTree(first).get("data").get(1).get("centerId").asInt());
+        assertEquals(3, objectMapper.readTree(second).get("data").get(0).get("centerId").asInt());
+    }
+
+    @Test
+    void responseKeepsDateFormatAndNullableCapacities() throws Exception {
+        String name = "N" + UUID.randomUUID().toString().substring(0, 8);
+        String request = centerJson(name, 0, 0)
+                .replace("\"maxStorageCapacity\":0", "\"maxStorageCapacity\":null")
+                .replace("\"currentStorageCapacity\":0", "\"currentStorageCapacity\":null");
+        String body = mvc.perform(post("/api/v1/centers")
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken))
+                        .contentType(MediaType.APPLICATION_JSON).content(request))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        JsonNode created = objectMapper.readTree(body);
+        assertTrue(created.get("maxStorageCapacity").isNull());
+        assertTrue(created.get("currentStorageCapacity").isNull());
+        assertTrue(created.get("createDate").asText()
+                .matches("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?"));
+
+        mvc.perform(delete("/api/v1/centers/" + created.get("centerId").asInt())
+                        .header(HttpHeaders.AUTHORIZATION, bearer(accessToken)))
+                .andExpect(status().isOk());
+    }
+
+    private static int compareSortValues(com.fasterxml.jackson.databind.JsonNode left,
+            com.fasterxml.jackson.databind.JsonNode right, String field) {
+        if (left.get(field).isNumber()) {
+            return Long.compare(left.get(field).asLong(), right.get(field).asLong());
+        }
+        return left.get(field).asText().compareTo(right.get(field).asText());
     }
 
     @Test

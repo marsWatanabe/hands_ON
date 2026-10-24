@@ -35,4 +35,20 @@ public record PageResponse<T>(List<T> data, Meta meta) {
                 page.getContent(),
                 new Meta(page.getTotalElements(), page.getNumber() + 1, page.getSize(), page.getTotalPages()));
     }
+
+    /**
+     * DB へページ検索を発行できないほど大きいページ番号に対する空レスポンスを生成する。
+     *
+     * @param total 検索条件に一致する総件数
+     * @param page リクエストされたページ番号（1 始まり）
+     * @param size 1 ページの件数
+     * @param <T> 一覧の要素の型
+     * @return 空の一覧と、検索条件に基づくページング情報
+     */
+    public static <T> PageResponse<T> empty(long total, int page, int size) {
+        long totalPages = total == 0 ? 0 : 1 + (total - 1) / size;
+        return new PageResponse<>(
+                List.of(),
+                new Meta(total, page, size, (int) Math.min(totalPages, Integer.MAX_VALUE)));
+    }
 }
