@@ -1,7 +1,5 @@
 package com.aojt.mgmt.config;
 
-import com.aojt.mgmt.model.Role;
-import com.aojt.mgmt.service.jwt.JwtService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -18,6 +16,9 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
 
+import com.aojt.mgmt.model.Role;
+import com.aojt.mgmt.service.jwt.JwtService;
+
 /**
  * Spring Security の設定（JWT による認証・認可）。
  */
@@ -32,19 +33,22 @@ public class SecurityConfig {
      * セキュリティフィルターチェーン。
      *
      * <p>{@code /api/v1/auth/**} と Swagger は未認証で呼べる。{@code /api/v1/centers/**} は USER 権限以上、
-     * それ以外は認証済みであること。H2 コンソールは {@code spring.h2.console.enabled=true} のときだけ開く（開発用）。
+     * それ以外は認証済みであること。H2 コンソールと動作確認用の画面（{@code /dev-ui/**}）は、それぞれ
+     * {@code spring.h2.console.enabled=true}、{@code app.dev-ui.enabled=true} のときだけ開く（開発用）。
      *
      * @param http HTTP セキュリティ
      * @param jwtDecoder JWT デコーダー
      * @param errorHandlers 401・403 を共通形式で返すハンドラ
      * @param h2ConsoleEnabled H2 コンソールが有効か
+     * @param devUiEnabled 動作確認用の画面が有効か
      * @return フィルターチェーン
      * @throws Exception 設定に失敗した場合
      */
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http, JwtDecoder jwtDecoder,
             SecurityErrorHandlers errorHandlers,
-            @Value("${spring.h2.console.enabled:false}") boolean h2ConsoleEnabled) throws Exception {
+            @Value("${spring.h2.console.enabled:false}") boolean h2ConsoleEnabled,
+            @Value("${app.dev-ui.enabled:false}") boolean devUiEnabled) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(Customizer.withDefaults())
@@ -56,7 +60,13 @@ public class SecurityConfig {
                         // 開発用。spring.h2.console.settings.web-allow-others=false でローカルからのみに限定される。
                         auth.requestMatchers("/h2-console/**").permitAll();
                     }
-                    auth.requestMatchers("/api/v1/centers/**").hasAnyRole(Role.USER.name(), Role.ADMIN.name())
+                    if (devUiEnabled) {
+                        // 開発用の動作確認画面（静的ファイル）。本番では app.dev-ui.enabled=false にする（認証が必要になり、事実上開けない）。
+                        auth.requestMatchers("/", "/index.html", "/dev-ui/**").permitAll();
+                    }
+                    auth.requestMatchers("/api/v1/centers/**", "/api/v1/categories/**",
+                                    "/api/v1/parts-stocks/**", "/api/v1/products-stocks/**")
+                            .hasAnyRole(Role.USER.name(), Role.ADMIN.name())
                             .anyRequest().authenticated();
                 })
                 // H2 コンソールは同一オリジンのフレームで表示される。
