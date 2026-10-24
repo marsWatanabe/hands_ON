@@ -333,13 +333,14 @@ LIMIT :size OFFSET (:page - 1) * :size
 | Lombok | 使用 | 不使用 | 要確認（新規依存の扱い） |
 | `capacityConsistent` | — | 容量検証をサービス層に移し、DTO から `isCapacityConsistent` を削除 | **解消済** |
 
-## 9. 他の API（次の詳細設計の対象。提案）
+## 9. 他の API
 
-原典に API 仕様が無いもの。同じ形式（`data`/`meta`、論理削除、USER 以上）で設計する。
+カテゴリ、部品在庫、製品在庫は [detailed-design-stocks.md](detailed-design-stocks.md) に詳細設計を書いた。同じ形式（`data`/`meta`、論理削除、USER 以上）で実装する。
 
-| リソース | エンドポイント案 | 備考 |
+| リソース | エンドポイント | 状態 |
 | --- | --- | --- |
-| カテゴリ | `GET/POST /api/v1/categories`、`PUT/DELETE /api/v1/categories/{categoryId}` | 検索は `categoryType`、`categoryName`。種別内で名称が一意 |
-| 部品在庫 | `GET/POST /api/v1/parts-stocks`、`PUT/DELETE /api/v1/parts-stocks/{stockId}` | 検索は `categoryId`、`name`、`amountMin`、`amountMax`。カテゴリは種別 `part`、センターの存在を検証 |
-| 製品在庫 | `GET/POST /api/v1/products-stocks`、`PUT/DELETE /api/v1/products-stocks/{stockId}` | 製品コードの列が必要（C-5） |
+| カテゴリ | `GET/POST /api/v1/categories`、`PUT/DELETE /api/v1/categories/{categoryId}` | 設計済み・実装済み |
+| 部品在庫 | `GET/POST /api/v1/parts-stocks`、`PUT/DELETE /api/v1/parts-stocks/{stockId}` | 設計済み・実装済み |
+| 製品在庫 | `GET/POST /api/v1/products-stocks`、`PUT/DELETE /api/v1/products-stocks/{stockId}` | 設計済み・実装済み（製品コードの列を V4 で追加） |
 | 操作履歴 | `GET /api/v1/operation-history` | スコープ未定（Q-6） |
+| 横断検索 | `GET /api/v1/stocks/search`（想定のみ。detailed-design-stocks.md 第 9 章） | 未実装 |

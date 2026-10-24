@@ -68,6 +68,7 @@ erDiagram
 
     PRODUCTS_STOCK_INFO {
         int stock_id PK "自動採番"
+        varchar product_code UK "20文字 必須 重複禁止（V4 で追加）"
         int category_id FK
         varchar name "255文字 必須"
         int center_id FK
@@ -127,6 +128,14 @@ erDiagram
 
 原典の `docs/table-definitions.md` と上の ER 図のとおり。`category_info.category_name` は 20 文字、`name`（在庫）は 255 文字。
 
+**製品コード（2026-10-21 追加）**: 原典の画面仕様（製品在庫一覧）に「製品コード」があるが、原典の `products_stock_info` に列が無かった（[requirements.md](requirements.md) C-5）。`V4__add_product_code.sql` で次の列を追加した。
+
+| 物理名 | 型 | NOT NULL | 説明 | 出典 |
+| --- | --- | :-: | --- | --- |
+| product_code | VARCHAR(20) | ◯ | 製品コード。削除済みを含めて一意（制約 `uk_products_stock_product_code`。DB で保証）。V4 で、既存の行に `PRD-` + stock_id（6 桁ゼロ埋め、例 `PRD-000012`）を入れた。**連番管理ではない**（stock_id の欠番はコードにも欠番）。新規の行は入力する | [提案] 画面仕様 |
+
+メモ: 在庫の名称は DB では一意にしない。**同じセンターの中で、未削除のものと重複できない**ことは API（Service）で検証する（別のセンターには同じ名称を置ける）。カテゴリ名も、同じ種別の中で未削除のものと重複できないことを API で検証する。部分的な一意制約が H2 と PostgreSQL で揃わないため。**保証はアプリ層だけで、同時リクエストの競合は防げない**（製品コードだけが DB の一意制約でも守られる）。詳細と対策案は [detailed-design-stocks.md](detailed-design-stocks.md) 第 6.1 章。
+
 ## 4. インデックスと制約
 
 原典のテーブル定義書は、索引を主キーと外部キーの列にだけ示している。**2026-10-14 に DB を再設計し、次のうち「実装済」を Flyway の `V1__initial.sql` に反映した**。「未決」は要確認のため入れていない。
@@ -139,7 +148,9 @@ erDiagram
 | 在庫の `amount`、センターの容量 | CHECK 制約（0 以上、NULL は許可） | 負数の防止。画面仕様「在庫数は 0 以上」に対応 | **実装済** |
 | `_user.email` | ユニーク制約 | ログイン ID の重複防止 | **実装済**（原典 SQL にもある） |
 | `center_info (delete_flag, operational_status)` | 複合インデックス | 一覧の絞り込み | 未実施（件数が増えた場合のみ） |
-| `category_info (category_type, category_name)` | ユニーク制約 | BR-03 | 未決（要確認） |
+| `products_stock_info.product_code` | ユニーク制約（削除済みを含む） | 製品コードの重複防止 | **実装済**（V4、`uk_products_stock_product_code`） |
+| `category_info (category_type, category_name)` | （DB の制約は無し）アプリ層の事前照合 | BR-03 | **アプリ層だけで保証**（同時リクエストの競合は防げない）。DB 制約は未決（部分ユニークインデックスが H2 に無い） |
+| `parts_stock_info`、`products_stock_info` の `(center_id, name)` | （DB の制約は無し）アプリ層の事前照合 | BR-04（同じセンター内で重複禁止） | **アプリ層だけで保証**（同上） |
 | `center_info.version` ほか | 楽観ロック用の `version` 列 | 同時更新による更新の消失の防止 | 未決（要確認） |
 
 ## 5. 拡張案: 操作履歴（提案）
@@ -172,6 +183,27 @@ erDiagram
 - 原典の `V1__create_categories_table.sql` は `TINYINT` を使っており、PostgreSQL には無い型のため、そのままでは動かない。→ **hands_ON では `SMALLINT` に置き換え済み**。列の意味（0/1 のフラグ）は変わらない。原典の `docs/table-definitions.md` の型表記（TINYINT）も、この置き換えを反映する更新が必要（「ドキュメントを先に直す」原則）。
 - PostgreSQL での実際の検証は未実施（次の作業）。
 
+### 6.1 開発用データ（Flyway のデータ用フォルダー）
+
+スキーマ（`db/migration`）とデータを分けている。データは開発・テストだけで読み込み、本番では `spring.flyway.locations` を `classpath:db/migration` だけにする。
+
+| フォルダー | バージョン | 内容 | 読み込み先 |
+| --- | --- | --- | --- |
+| `db/migration` | V1 | スキーマ（5 テーブル、制約、索引） | すべての環境 |
+| `db/seed-dev` | V2 | 最小の初期データ: カテゴリ 16、センター 3（東京、大阪、名古屋）、部品在庫 20、製品在庫 12 | 開発、テスト |
+| `db/seed-demo` | V3 | 動作確認用のデモデータ: センター 19 件を追加（合計 22）、部品在庫 38、製品在庫 19 を追加（合計 58、合計 31） | 開発のみ。**テストは読み込まない**（`application-test.yml`。テストの期待値は V2 の 3 件のまま） |
+| `db/migration` | V4 | 製品在庫に `product_code` を追加（既存行に `PRD-` + stock_id（6 桁ゼロ埋め）を入れ、NOT NULL と一意制約） | すべての環境。V3 の後に適用されるため、V3 のデモ行も採番される |
+
+デモデータ（V3）の設計:
+
+- 在庫センター 22 件の紐づき（ツリー）: `center_info` → `parts_stock_info`（各センター 2 件）、`products_stock_info`（各センター 1 件）。このカテゴリは `category_info` を参照する。
+- 地域は北海道から沖縄まで（札幌、仙台、さいたま、千葉、横浜、新潟、金沢、静岡、浜松、四日市、京都、神戸、岡山、広島、高松、福岡、熊本、鹿児島、沖縄）。住所は都道府県、政令指定都市の区（札幌市中央区など）、「四日市市」、「郡と町」（沖縄）を含む。画面の住所分割（`docs/frontend-centers-design.md` 第 4 章）の確認に使える。
+- バリエーション: 稼働停止 3 件（新潟、高松、沖縄）、容量未設定（NULL）1 件（沖縄）、備考なし 4 件。現在容量は最大容量以下。稼働停止のセンターの在庫数量は 0（沖縄を除く）。
+- 住所、電話番号、担当者名は架空のサンプル。番地は仮の値（1-1 など）。
+- 在庫のセンターは ID ではなくセンター名で引く。開発用 DB に手動で追加したセンターがあっても、紐づきがずれない。
+- 既存の開発用 DB（V2 適用済み）は、再起動すると V3 だけが追加で適用される（DB を作り直す必要はない）。同名のセンターが既にあると、ユニーク制約で起動に失敗する。その場合は `backend/target/testdb.mv.db` を削除して作り直す。
+- 検証: `DemoSeedDataTest`（件数、すべてのセンターに部品・製品が紐づくこと、カテゴリ種別、稼働停止、容量、郵便番号・電話番号の形式）。
+
 ## 7. 原典と hands_ON の差分（2026-10-14 の DB 再設計後）
 
 初稿では hands_ON の実装が原典と食い違っていたが、原典のテーブル定義に合わせて修正した。現在の差分と対応状況を示す。
@@ -187,4 +219,4 @@ erDiagram
 | 初期データ | V1 SQL に同居。`PARTS`/`PRODUCT`、稼働状況 1 | `db/seed-dev/V2` に分離。`part`/`product`、稼働状況 0（テーブル定義を優先） | 解消済（C-1、C-2） |
 | 型 | `TINYINT`、`DATETIME` | `SMALLINT`、`TIMESTAMP`（PostgreSQL 互換） | 変更。原典のドキュメントの更新が必要 |
 | エンティティ | `center_info` 用のエンティティ（クラス名は別） | クラス名 `Center`（`model` パッケージ、`center_info` にマップ） | 解消済 |
-| カテゴリ、部品・製品在庫のエンティティ | あり | テーブルのみ（エンティティは未作成） | 後続の API 実装時に作成 |
+| カテゴリ、部品・製品在庫のエンティティ | あり | `Category`、`PartsStock`、`ProductsStock`（`model` パッケージ） | 解消済（API とともに作成） |
