@@ -26,7 +26,8 @@ hands_ON/
 │   ├── detailed-design.md           # 詳細設計書（在庫センター API）
 │   ├── frontend-centers-design.md   # フロントエンド設計（在庫センター管理画面）
 │   ├── non-functional-requirements.md  # 非機能要件
-│   └── review/                      # レビュー報告書
+│   ├── screen-spec/                 # 画面仕様書（Excel、画面キャプチャ付き）
+│   └── review/                      # レビュー報告書、動作確認レポート
 ├── .github/                 # Copilot 指示、CI、Issue テンプレート
 └── frontend/                # Next.js フロントエンド（在庫センター管理画面、ログイン・登録）
     ├── app/                 # ページ、コンポーネント、hooks、lib（API クライアント、検証）、types
@@ -181,6 +182,9 @@ $ npm run test:e2e     # E2E（Chromium）。バックエンドを起動して�
 - **`docs/frontend-centers-design.md`**: フロントエンド設計（在庫センター、カテゴリ、部品在庫、製品在庫の画面）
 - **`docs/detailed-design-stocks.md`**: 詳細設計書（カテゴリ・部品在庫・製品在庫 API）
 - **`docs/non-functional-requirements.md`**: 非機能要件
-- **`docs/review/backend-review-centers.md`**: レビュー報告書
+- **`docs/review/backend-review-centers.md`**: レビュー報告書（バックエンド）
+- **`docs/review/frontend-review-centers.md`**: レビュー報告書（フロントエンド）
+- **`docs/review/frontend-verification-report-20261028.md`**: 動作確認レポート（フロントエンド）
+- **`docs/screen-spec/Inventrack_screen-spec.xlsx`**: 画面仕様書（Excel。実ブラウザの通し操作のキャプチャ付き）
 
 原典の `docs/api-interface-spec.md`、`docs/screen-specifications.md`、`docs/table-definitions.md` は、このリポジトリにはまだ取り込んでいない（原典の zip を参照）。

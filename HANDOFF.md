@@ -34,11 +34,11 @@
 
 - 認証（登録、ログイン、トークン更新、ユーザー取得）と、在庫センター、カテゴリ、部品在庫、製品在庫の API（いずれも一覧、作成、編集、論理削除）。カテゴリ・部品在庫・製品在庫の詳細設計は `docs/detailed-design-stocks.md`。製品コードの列は V4、カテゴリ名・在庫の名称の重複禁止の DB 制約（`active_name`）は V5 で追加。カテゴリの削除と在庫の登録の同時実行は、カテゴリの行ロックで直列にしている。
 - Flyway で管理するスキーマ（`_user`、`category_info`、`center_info`、`parts_stock_info`、`products_stock_info`）と、開発用の初期データ。
-- 設計書: 要件定義、ER 図、詳細設計、非機能要件、レビュー報告書（すべて `docs/`）。
+- 設計書: 要件定義、ER 図、詳細設計、非機能要件、レビュー報告書（すべて `docs/`）。画面仕様書（Excel、実ブラウザの通し操作のキャプチャ付き）は `docs/screen-spec/Inventrack_screen-spec.xlsx`。
 - テスト 300 件が成功する。層ごとのユニットテスト（Controller、Service、Repository、Config）、結合テスト 35 件（センター 19、カテゴリ・在庫 11、同時実行 5）、DB スキーマテスト 15 件、デモデータテスト 6 件、開発用UIアクセステスト 4 件。命令カバレッジ 97.3%（`-Pcoverage`）。
 - パッケージは原典のドメイン単位、Javadoc とユーザー向けメッセージは日本語、エラーコードは原典に統一済み。
 - GitHub Actions: `CI`（`./mvnw verify -Pcoverage`）と `Copilot Setup Steps`。
-- **動作確認用の簡易画面**（http://localhost:8080/ → `/dev-ui/`）: 登録・ログイン、一覧・検索、登録・編集・削除、エラー確認用の入力例、通信ログ。`app.dev-ui.enabled`（既定 true、本番では false）。業務用の画面（`frontend/`）ではない。テストは 134 件。
+- **動作確認用の簡易画面**（http://localhost:8080/ → `/dev-ui/index.html` に転送。末尾を `/` で終える `/dev-ui/` は 404）: 登録・ログイン、一覧・検索、登録・編集・削除、エラー確認用の入力例、通信ログ。`app.dev-ui.enabled`（既定 true、本番では false）。業務用の画面（`frontend/`）ではない。テストは 134 件。
 - **業務用フロントエンド**（`frontend/`、Next.js 15、Chakra UI）: ログイン、アカウント登録、在庫センター管理、部品在庫一覧、製品在庫一覧、カテゴリ管理（いずれも一覧、検索、並び替え、ページ送り、登録、編集、削除）。設計は `docs/frontend-centers-design.md`。単体テスト 109 件と E2E 46 件（Playwright）。`npm run lint`、`typecheck`、`build` が通る。トークンは原典どおり Cookie に保存している（既知の制限。設計書第 7 章）。
 - 起動、Swagger UI、H2 コンソール、`flyway:info` の確認済み。
 
@@ -95,7 +95,8 @@ npm run test:e2e                   # E2E（バックエンドが必要）
 4. `docs/er-diagram.md`（ER 図、テーブル設計、原典との差分）
 5. `docs/detailed-design.md`（在庫センター API の詳細設計、原典との差分表 第 8 章）と `docs/detailed-design-stocks.md`（カテゴリ・部品在庫・製品在庫 API）
 6. `docs/non-functional-requirements.md`
-7. `docs/review/backend-review-centers.md`（レビュー指摘。冒頭の訂正を先に読む）
+7. `docs/review/backend-review-centers.md`（バックエンドのレビュー指摘。冒頭の訂正を先に読む）
+   `docs/review/frontend-review-centers.md`（フロントエンドのレビュー報告書）、`docs/review/frontend-verification-report-20261028.md`（フロントエンドの動作確認レポート）
    `docs/review/test-scope-and-production-considerations-20261021.md`（テスト範囲と本番向け検討項目。現状は開発用で、本番に出す前の対応をまとめている）
 8. 原典 zip の `docs/api-interface-spec.md`、`docs/screen-specifications.md`、`docs/table-definitions.md`、`adr/`、`.github/copilot-instructions.md`、`.github/instructions/`
 
@@ -110,6 +111,7 @@ npm run test:e2e                   # E2E（バックエンドが必要）
 | テストで Mockito の初期化エラー | ユーザー名に日本語（渡邉天）を含むパスで、Mockito のエージェント自己接続が失敗する。`backend/src/test/resources/mockito-extensions/org.mockito.plugins.MockMaker`（`mock-maker-subclass`）で回避済み。**消さない** |
 | JaCoCo で `forked VM terminated` | 同じ原因（パスの日本語）。JVM がエージェントの引数（パス）を文字化けさせる。そのため JaCoCo はプロファイル `coverage` にし、既定のビルドに入れていない。この PC では `subst X:` で ASCII パスにして実行する（第 3.3 章）。CI（Linux）では問題ない |
 | JDK | JDK は 26 のみ（`C:\jdk-26.0.1`）。ビルドは Java 21 向け（`pom.xml` の `java.version=21`）。原典は JDK 21 を前提にしている |
+| ブランチ `appmod/java-upgrade-20261025043019` | 2026-10-25 の Java アップグレードツールが作成したブランチ。Java のターゲットを 25 にする変更（`pom.xml`、GitHub Actions、文書のバージョン表記、計 8 ファイル）を 1 コミットだけ含む。**`main` には取り込んでいない**（未検証・未決定）。採用するなら、テストと CI を確認してからマージする。不要なら削除してよい |
 | Maven | `mvnw` を使う（Maven のインストールは不要）。ラッパーは `backend/.mvn/` にある |
 | H2 のファイル DB | `./target/testdb` は 1 プロセスしか開けない。アプリの起動中に `flyway:info`/`migrate` を実行しない。DB を作り直すには、アプリを止めて `backend/target/testdb.mv.db` を削除する |
 | `git push` が「エラー」表示で終わる | PowerShell が git の進捗出力（stderr）を誤ってエラー扱いにしているだけ。`git status -sb` で `main...origin/main` と出れば成功 |
@@ -163,6 +165,8 @@ npm run test:e2e                   # E2E（バックエンドが必要）
 
 ### 7.3 課題の進行（スライド）
 
+- [x] Day3 フロントエンド実装（2026-10-28）: 実装（テスト付き）、レビュー報告書（`docs/review/frontend-review-centers.md`）、動作確認レポート（`docs/review/frontend-verification-report-20261028.md`）、画面仕様書（Excel）を作成した。人による動作確認は完了扱い。実装はステップごとの指示ではなく一括で進めた（レビュー報告書第 3 章）。
+  - [ ] レビューで出た指摘の対応（トークンの保存、画面幅、エラー表示など）。UI/UX の改修とあわせて進める。
 - [ ] 別のモデルで同じレビューを行い、`docs/review/backend-review-centers.md` と比較する（工程 IV。レビュー依頼用プロンプトは同書の第 7 章）。
 - [ ] 別ブランチで別のアプローチを試し、比較する（V-1）。
 - [ ] Slack に振り返りを投稿する（**ユーザーの作業**）: 1. どう進めたか、2. AI とのやり取りで印象に残ったこと、3. 次にどう取り組むか。
