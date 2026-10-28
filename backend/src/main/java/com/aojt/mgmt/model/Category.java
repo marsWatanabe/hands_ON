@@ -47,6 +47,13 @@ public class Category {
     @Column(name = "category_name", nullable = false, length = 20)
     private String categoryName;
 
+    /**
+     * 有効なカテゴリ名。未削除の間は {@link #categoryName} と同じ値、削除済みは null。
+     * 一意制約 {@code (category_type, active_name)} が、同じ種別内の未削除どうしの名称の重複を防ぐ（V5）。
+     */
+    @Column(name = "active_name", length = 20)
+    private String activeName;
+
     /** 説明（255文字）。 */
     @Column(name = "description", length = 255)
     private String description;
@@ -103,12 +110,22 @@ public class Category {
     }
 
     /**
-     * カテゴリ名を設定する。
+     * カテゴリ名を設定する。有効なカテゴリ名（{@link #getActiveName()}）も合わせて更新する。
      *
      * @param categoryName カテゴリ名
      */
     public void setCategoryName(String categoryName) {
         this.categoryName = categoryName;
+        syncActiveName();
+    }
+
+    /**
+     * 有効なカテゴリ名を返す。
+     *
+     * @return 未削除ならカテゴリ名、削除済みなら null
+     */
+    public String getActiveName() {
+        return activeName;
     }
 
     /**
@@ -156,8 +173,14 @@ public class Category {
         return updateDate;
     }
 
-    /** 論理削除する（{@code delete_flag = 1}）。 */
+    /** 論理削除する（{@code delete_flag = 1}）。有効なカテゴリ名は null にして、同じ名称を再び登録できるようにする。 */
     public void markDeleted() {
         this.deleteFlag = DELETED;
+        syncActiveName();
+    }
+
+    /** 有効なカテゴリ名を、削除フラグとカテゴリ名から求め直す。 */
+    private void syncActiveName() {
+        this.activeName = Integer.valueOf(NOT_DELETED).equals(deleteFlag) ? categoryName : null;
     }
 }

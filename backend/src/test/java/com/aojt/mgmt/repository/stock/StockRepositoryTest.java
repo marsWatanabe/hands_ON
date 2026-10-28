@@ -2,6 +2,7 @@ package com.aojt.mgmt.repository.stock;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -24,6 +25,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
@@ -47,6 +49,9 @@ class StockRepositoryTest {
 
     @Autowired
     CenterRepository centers;
+
+    @Autowired
+    JdbcTemplate jdbc;
 
     private static final Sort BY_ID = Sort.by("stockId");
 
@@ -291,5 +296,78 @@ class StockRepositoryTest {
         }
         assertTrue(products.existsByCategory_CategoryIdAndDeleteFlag(
                 category(Category.TYPE_PRODUCT).getCategoryId(), StockItem.NOT_DELETED));
+    }
+
+    private String activeNameOf(String table, Integer stockId) {
+        return jdbc.queryForObject(
+                "SELECT active_name FROM " + table + " WHERE stock_id = ?", String.class, stockId);
+    }
+
+    /** 同じセンターに未削除どうしで同じ名称の部品在庫を保存すると、DB の一意制約で拒否されること。 */
+    @Test
+    void parts_rejectsDuplicateActiveNameInTheSameCenterByConstraint() {
+        Center tokyo = center("東京センター");
+        savePart("重複確認の部品", tokyo, 1, false);
+
+        assertThrows(DataIntegrityViolationException.class, () -> savePart("重複確認の部品", tokyo, 2, false));
+    }
+
+    /** 同じセンターに未削除どうしで同じ名称の製品在庫を保存すると、DB の一意制約で拒否されること。 */
+    @Test
+    void products_rejectsDuplicateActiveNameInTheSameCenterByConstraint() {
+        Center tokyo = center("東京センター");
+        saveProduct("PRD-DUP-1", "重複確認の製品", tokyo, false);
+
+        assertThrows(DataIntegrityViolationException.class,
+                () -> saveProduct("PRD-DUP-2", "重複確認の製品", tokyo, false));
+    }
+
+    /** 名称を変更して、同じセンターの未削除の名称と同じになると、DB の一意制約で拒否されること。 */
+    @Test
+    void parts_rejectsRenameToAnExistingActiveNameByConstraint() {
+        Center tokyo = center("東京センター");
+        savePart("名称A", tokyo, 1, false);
+        PartsStock other = savePart("名称B", tokyo, 1, false);
+        other.setName("名称A");
+
+        assertThrows(DataIntegrityViolationException.class, () -> parts.saveAndFlush(other));
+    }
+
+    /** 別のセンター、削除済み、削除後の再登録では、同じ名称を保存できること（部品・製品とも）。 */
+    @Test
+    void stocks_allowSameNameInAnotherCenterAndForDeletedRows() {
+        Center tokyo = center("東京センター");
+        Center osaka = center("大阪センター");
+        PartsStock first = savePart("共通の部品", tokyo, 1, false);
+        savePart("共通の部品", osaka, 1, false);
+        savePart("削除済みの部品", tokyo, 1, true);
+        savePart("削除済みの部品", tokyo, 1, true);
+
+        first.markDeleted();
+        parts.saveAndFlush(first);
+        PartsStock again = savePart("共通の部品", tokyo, 1, false);
+
+        assertEquals("共通の部品", activeNameOf("parts_stock_info", again.getStockId()));
+        assertNull(activeNameOf("parts_stock_info", first.getStockId()));
+
+        saveProduct("PRD-SAME-1", "共通の製品", tokyo, false);
+        saveProduct("PRD-SAME-2", "共通の製品", osaka, false);
+        saveProduct("PRD-SAME-3", "削除済みの製品", tokyo, true);
+        saveProduct("PRD-SAME-4", "削除済みの製品", tokyo, true);
+    }
+
+    /** 有効な名称（active_name）が、名称の変更と論理削除に追従して DB に保存されること。 */
+    @Test
+    void activeName_followsNameAndDeleteFlagInTheDatabase() {
+        PartsStock saved = savePart("旧名", center("東京センター"), 1, false);
+        assertEquals("旧名", activeNameOf("parts_stock_info", saved.getStockId()));
+
+        saved.setName("新名");
+        parts.saveAndFlush(saved);
+        assertEquals("新名", activeNameOf("parts_stock_info", saved.getStockId()));
+
+        saved.markDeleted();
+        parts.saveAndFlush(saved);
+        assertNull(activeNameOf("parts_stock_info", saved.getStockId()));
     }
 }

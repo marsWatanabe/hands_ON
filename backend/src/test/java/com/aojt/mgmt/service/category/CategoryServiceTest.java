@@ -186,7 +186,7 @@ class CategoryServiceTest {
     /** 存在しない、または削除済みのカテゴリの更新は NotFoundException になること。 */
     @Test
     void update_throwsNotFoundWhenMissing() {
-        when(repository.findByCategoryIdAndDeleteFlag(9, Category.NOT_DELETED)).thenReturn(Optional.empty());
+        when(repository.findWithLockByCategoryIdAndDeleteFlag(9, Category.NOT_DELETED)).thenReturn(Optional.empty());
 
         assertThrows(NotFoundException.class, () -> service.update(9, request("part", "x")));
         verify(repository, never()).saveAndFlush(any());
@@ -196,7 +196,7 @@ class CategoryServiceTest {
     @Test
     void update_replacesFieldsWithoutCheckingUsageWhenTypeIsUnchanged() {
         Category existing = category("part", "旧名称");
-        when(repository.findByCategoryIdAndDeleteFlag(1, Category.NOT_DELETED)).thenReturn(Optional.of(existing));
+        when(repository.findWithLockByCategoryIdAndDeleteFlag(1, Category.NOT_DELETED)).thenReturn(Optional.of(existing));
         when(repository.existsByCategoryTypeAndCategoryNameAndDeleteFlagAndCategoryIdNot(
                 "part", "新名称", Category.NOT_DELETED, 1)).thenReturn(false);
         when(repository.saveAndFlush(existing)).thenReturn(existing);
@@ -213,7 +213,7 @@ class CategoryServiceTest {
     @Test
     void update_rejectsDuplicateNameOfAnotherCategory() {
         Category existing = category("part", "旧名称");
-        when(repository.findByCategoryIdAndDeleteFlag(1, Category.NOT_DELETED)).thenReturn(Optional.of(existing));
+        when(repository.findWithLockByCategoryIdAndDeleteFlag(1, Category.NOT_DELETED)).thenReturn(Optional.of(existing));
         when(repository.existsByCategoryTypeAndCategoryNameAndDeleteFlagAndCategoryIdNot(
                 "part", "重複", Category.NOT_DELETED, 1)).thenReturn(true);
 
@@ -226,7 +226,7 @@ class CategoryServiceTest {
     @Test
     void update_rejectsTypeChangeWhileUsedByStock() {
         Category existing = category("part", "フレーム");
-        when(repository.findByCategoryIdAndDeleteFlag(1, Category.NOT_DELETED)).thenReturn(Optional.of(existing));
+        when(repository.findWithLockByCategoryIdAndDeleteFlag(1, Category.NOT_DELETED)).thenReturn(Optional.of(existing));
         when(partsStockRepository.existsByCategory_CategoryIdAndDeleteFlag(1, Category.NOT_DELETED))
                 .thenReturn(true);
 
@@ -239,7 +239,7 @@ class CategoryServiceTest {
     @Test
     void update_allowsTypeChangeWhenUnused() {
         Category existing = category("part", "フレーム");
-        when(repository.findByCategoryIdAndDeleteFlag(1, Category.NOT_DELETED)).thenReturn(Optional.of(existing));
+        when(repository.findWithLockByCategoryIdAndDeleteFlag(1, Category.NOT_DELETED)).thenReturn(Optional.of(existing));
         when(partsStockRepository.existsByCategory_CategoryIdAndDeleteFlag(1, Category.NOT_DELETED))
                 .thenReturn(false);
         when(productsStockRepository.existsByCategory_CategoryIdAndDeleteFlag(1, Category.NOT_DELETED))
@@ -256,7 +256,7 @@ class CategoryServiceTest {
     /** 存在しないカテゴリの削除は NotFoundException になること。 */
     @Test
     void delete_throwsNotFoundWhenMissing() {
-        when(repository.findByCategoryIdAndDeleteFlag(anyInt(), eq(Category.NOT_DELETED)))
+        when(repository.findWithLockByCategoryIdAndDeleteFlag(anyInt(), eq(Category.NOT_DELETED)))
                 .thenReturn(Optional.empty());
 
         assertThrows(NotFoundException.class, () -> service.delete(9));
@@ -266,7 +266,7 @@ class CategoryServiceTest {
     @Test
     void delete_rejectsCategoryUsedByPartsStock() {
         Category existing = category("part", "フレーム");
-        when(repository.findByCategoryIdAndDeleteFlag(1, Category.NOT_DELETED)).thenReturn(Optional.of(existing));
+        when(repository.findWithLockByCategoryIdAndDeleteFlag(1, Category.NOT_DELETED)).thenReturn(Optional.of(existing));
         when(partsStockRepository.existsByCategory_CategoryIdAndDeleteFlag(1, Category.NOT_DELETED))
                 .thenReturn(true);
 
@@ -278,7 +278,7 @@ class CategoryServiceTest {
     @Test
     void delete_rejectsCategoryUsedByProductsStock() {
         Category existing = category("product", "災害用");
-        when(repository.findByCategoryIdAndDeleteFlag(11, Category.NOT_DELETED)).thenReturn(Optional.of(existing));
+        when(repository.findWithLockByCategoryIdAndDeleteFlag(11, Category.NOT_DELETED)).thenReturn(Optional.of(existing));
         when(partsStockRepository.existsByCategory_CategoryIdAndDeleteFlag(11, Category.NOT_DELETED))
                 .thenReturn(false);
         when(productsStockRepository.existsByCategory_CategoryIdAndDeleteFlag(11, Category.NOT_DELETED))
@@ -292,7 +292,7 @@ class CategoryServiceTest {
     @Test
     void delete_marksUnusedCategoryAsDeleted() {
         Category existing = category("part", "フレーム");
-        when(repository.findByCategoryIdAndDeleteFlag(1, Category.NOT_DELETED)).thenReturn(Optional.of(existing));
+        when(repository.findWithLockByCategoryIdAndDeleteFlag(1, Category.NOT_DELETED)).thenReturn(Optional.of(existing));
 
         Map<String, String> result = service.delete(1);
 

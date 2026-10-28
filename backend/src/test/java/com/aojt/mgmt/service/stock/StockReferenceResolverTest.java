@@ -44,7 +44,7 @@ class StockReferenceResolverTest {
     @Test
     void requireCategory_returnsMatchingCategory() {
         Category part = category(Category.TYPE_PART);
-        when(categoryRepository.findByCategoryIdAndDeleteFlag(1, Category.NOT_DELETED)).thenReturn(Optional.of(part));
+        when(categoryRepository.findWithLockByCategoryIdAndDeleteFlag(1, Category.NOT_DELETED)).thenReturn(Optional.of(part));
 
         assertSame(part, resolver.requireCategory(1, Category.TYPE_PART));
     }
@@ -52,7 +52,7 @@ class StockReferenceResolverTest {
     /** 存在しない、または削除済みのカテゴリは BusinessException になること。 */
     @Test
     void requireCategory_rejectsMissingCategory() {
-        when(categoryRepository.findByCategoryIdAndDeleteFlag(9, Category.NOT_DELETED)).thenReturn(Optional.empty());
+        when(categoryRepository.findWithLockByCategoryIdAndDeleteFlag(9, Category.NOT_DELETED)).thenReturn(Optional.empty());
 
         BusinessException e = assertThrows(BusinessException.class,
                 () -> resolver.requireCategory(9, Category.TYPE_PART));
@@ -62,7 +62,7 @@ class StockReferenceResolverTest {
     /** 部品在庫に製品用のカテゴリを指定すると、部品用を求めるメッセージの BusinessException になること。 */
     @Test
     void requireCategory_rejectsProductCategoryForParts() {
-        when(categoryRepository.findByCategoryIdAndDeleteFlag(11, Category.NOT_DELETED))
+        when(categoryRepository.findWithLockByCategoryIdAndDeleteFlag(11, Category.NOT_DELETED))
                 .thenReturn(Optional.of(category(Category.TYPE_PRODUCT)));
 
         BusinessException e = assertThrows(BusinessException.class,
@@ -73,7 +73,7 @@ class StockReferenceResolverTest {
     /** 製品在庫に部品用のカテゴリを指定すると、製品用を求めるメッセージの BusinessException になること。 */
     @Test
     void requireCategory_rejectsPartCategoryForProducts() {
-        when(categoryRepository.findByCategoryIdAndDeleteFlag(1, Category.NOT_DELETED))
+        when(categoryRepository.findWithLockByCategoryIdAndDeleteFlag(1, Category.NOT_DELETED))
                 .thenReturn(Optional.of(category(Category.TYPE_PART)));
 
         BusinessException e = assertThrows(BusinessException.class,

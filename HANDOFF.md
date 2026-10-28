@@ -32,10 +32,10 @@
 
 ### 3.1 できていること
 
-- 認証（登録、ログイン、トークン更新、ユーザー取得）と、在庫センター、カテゴリ、部品在庫、製品在庫の API（いずれも一覧、作成、編集、論理削除）。カテゴリ・部品在庫・製品在庫の詳細設計は `docs/detailed-design-stocks.md`。製品コードの列は V4 で追加。
+- 認証（登録、ログイン、トークン更新、ユーザー取得）と、在庫センター、カテゴリ、部品在庫、製品在庫の API（いずれも一覧、作成、編集、論理削除）。カテゴリ・部品在庫・製品在庫の詳細設計は `docs/detailed-design-stocks.md`。製品コードの列は V4、カテゴリ名・在庫の名称の重複禁止の DB 制約（`active_name`）は V5 で追加。カテゴリの削除と在庫の登録の同時実行は、カテゴリの行ロックで直列にしている。
 - Flyway で管理するスキーマ（`_user`、`category_info`、`center_info`、`parts_stock_info`、`products_stock_info`）と、開発用の初期データ。
 - 設計書: 要件定義、ER 図、詳細設計、非機能要件、レビュー報告書（すべて `docs/`）。
-- テスト 278 件が成功する。層ごとのユニットテスト（Controller、Service、Repository、Config）、結合テスト 30 件（センター 19、カテゴリ・在庫 11）、DB スキーマテスト 12 件、デモデータテスト 6 件、開発用UIアクセステスト 4 件。命令カバレッジ 97.3%（`-Pcoverage`）。
+- テスト 300 件が成功する。層ごとのユニットテスト（Controller、Service、Repository、Config）、結合テスト 35 件（センター 19、カテゴリ・在庫 11、同時実行 5）、DB スキーマテスト 15 件、デモデータテスト 6 件、開発用UIアクセステスト 4 件。命令カバレッジ 97.3%（`-Pcoverage`）。
 - パッケージは原典のドメイン単位、Javadoc とユーザー向けメッセージは日本語、エラーコードは原典に統一済み。
 - GitHub Actions: `CI`（`./mvnw verify -Pcoverage`）と `Copilot Setup Steps`。
 - **動作確認用の簡易画面**（http://localhost:8080/ → `/dev-ui/`）: 登録・ログイン、一覧・検索、登録・編集・削除、エラー確認用の入力例、通信ログ。`app.dev-ui.enabled`（既定 true、本番では false）。業務用の画面（`frontend/`）ではない。テストは 134 件。
@@ -50,7 +50,7 @@ hands_ON/
 │   ├── src/main/java/...     # config, controller/{auth,user,center,category,stock}, service/{auth,jwt,center,category,stock,common},
 │   │                         # repository/{user,center}, model, dto/{auth,user,center,common}, exception
 │   ├── src/main/resources/application.yml
-│   ├── src/main/resources/db/migration/V1__initial.sql   # スキーマ
+│   ├── src/main/resources/db/migration/V1__initial.sql   # スキーマ（V4: 製品コード、V5: 名称の一意制約）
 │   ├── src/main/resources/db/seed-dev/V2__seed_dev_data.sql  # 最小の開発用データ（センター 3 件。テストも使う）
 │   ├── src/main/resources/db/seed-demo/V3__seed_demo_data.sql  # デモデータ（センターを 22 件に。開発のみ、テストは読み込まない）
 │   └── src/test/...          # 層ごとのユニットテスト、CenterApiIntegrationTest、repository/DatabaseSchemaTest
@@ -152,7 +152,7 @@ npm run test:e2e                   # E2E（バックエンドが必要）
 - [x] カテゴリ、部品在庫、製品在庫の API（`docs/detailed-design-stocks.md`）。エンティティ、画面も作成済み。製品コード（V4）、名称の重複禁止はセンター内、使用中カテゴリは削除・種別変更不可、は仮決定（設計書第 7 章）。
   - [ ] 横断検索 API（`GET /api/v1/stocks/search`。想定のみ、未実装）。
   - [ ] カテゴリ画面の CSV 一括登録（要件未定義。Q-8）。
-  - [ ] カテゴリ名・在庫の名称の重複禁止を DB でも保証するか決める。現在は**アプリ層の事前照合だけ**で、同時リクエストの競合を防げない（製品コードだけ DB の一意制約）。スキーマ変更になるため**要承認**（`docs/detailed-design-stocks.md` 第 6.1 章）。
+  - [x] カテゴリ名・在庫の名称の重複禁止を DB でも保証する（V5。`active_name` 列と一意制約）。同時リクエストの競合は、先にコミットした 1 件だけが成功し、残りは 409。カテゴリの削除・種別変更と在庫の登録・更新の競合も、カテゴリの行ロックで防いでいる（`ConcurrencyIntegrationTest`。`docs/detailed-design-stocks.md` 第 5.2、6.1 章）。**既存データに未削除どうしの重複がある環境では V5 が失敗する**。本番への適用前にデータのコピーで確認する。PostgreSQL での実行確認は未実施（下の「PostgreSQL での検証」に含める）。
   - [ ] センター詳細画面（センターからその在庫への導線）。API は `centerId` で絞り込み済み。
 - [x] フロントエンド（`frontend/`）: 在庫センター画面（一覧、検索、新規・編集・削除）。原典の `frontend/` を土台にした。画面仕様の不整合 C-4、C-9、C-10 は仮決定し、`requirements.md` 第 7 章に追記した（住所は画面で結合・分割、初期ソートは `centerId` 降順、操作列あり）。
   - [ ] フロントエンドの E2E を CI で実行する（バックエンドを CI で起動する必要がある。いまはローカルのみ）。
@@ -183,9 +183,9 @@ npm run test:e2e                   # E2E（バックエンドが必要）
 | CSV 一括登録 | 対象項目、形式、エラー時の扱い | Q-8 |
 | 海外拠点 | 郵便番号と電話番号の形式 | Q-9 |
 | 非機能の数値目標 | 規模、稼働時間、RTO/RPO、応答時間 | Q-10 |
-| 楽観ロック | `version` 列の追加 | M-2 |
-| カテゴリ名のユニーク制約 | 種別内で一意にするか | BR-03 |
-| 製品コード | 製品在庫に列を追加するか | C-5 |
+| 楽観ロック | `version` 列の追加。同じ行を 2 人が編集したときの「更新の消失」は現状防げない（リクエスト・レスポンスに `version` を追加する API 契約の変更。画面の改修前に決めるのが安い） | M-2 |
+| カテゴリ名のユニーク制約 | **解消済み**（種別内で一意、DB 制約あり。V5） | BR-03 |
+| 製品コード | **解消済み**（列を追加。V4） | C-5 |
 | 住所の分割 | 画面は都道府県などに分割、DB は 1 列。**仮決定**: 画面で結合・簡易判定で分割（`docs/frontend-centers-design.md` 第 4 章）。列を分けるなら要承認 | C-4 |
 | Lombok の採用 | 原典は使用。新規依存の扱い | — |
 

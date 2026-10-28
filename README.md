@@ -137,7 +137,7 @@ $ ./mvnw flyway:migrate
 
 ### Backend
 
-JUnit を使用してテストを実行する。テストはプロファイル `test`（テストごとに独立したインメモリ H2）で動く。Controller、Service、Repository、Config の層ごとのユニットテストと、結合テスト、DB スキーマテストがある（計 278 件）。
+JUnit を使用してテストを実行する。テストはプロファイル `test`（テストごとに独立したインメモリ H2）で動く。Controller、Service、Repository、Config の層ごとのユニットテストと、結合テスト（同時リクエストのテストを含む）、DB スキーマテストがある（計 300 件）。
 
 ```bash
 $ ./mvnw test

@@ -35,13 +35,18 @@ public class StockReferenceResolver {
     /**
      * 在庫のカテゴリを取得する。未削除で、期待する種別のカテゴリでなければならない。
      *
+     * <p>カテゴリの行をロックして取得する。同時に行われるカテゴリの削除・種別変更は、このトランザクションが
+     * 終わるまで待たされるため、削除済みのカテゴリを参照する在庫ができない。
+     * トランザクション内で呼び出すこと。
+     *
      * @param categoryId カテゴリID
      * @param expectedType 期待する種別（{@link Category#TYPE_PART} または {@link Category#TYPE_PRODUCT}）
      * @return カテゴリ
      * @throws BusinessException 存在しない、削除済み、または種別が違う場合
      */
     public Category requireCategory(Integer categoryId, String expectedType) {
-        Category category = categoryRepository.findByCategoryIdAndDeleteFlag(categoryId, Category.NOT_DELETED)
+        Category category = categoryRepository
+                .findWithLockByCategoryIdAndDeleteFlag(categoryId, Category.NOT_DELETED)
                 .orElseThrow(() -> new BusinessException(MSG_CATEGORY_NOT_FOUND + categoryId));
         if (!expectedType.equals(category.getCategoryType())) {
             throw new BusinessException(

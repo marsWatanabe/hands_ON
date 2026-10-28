@@ -146,8 +146,9 @@ public class CategoryService {
         return DELETE_SUCCESS;
     }
 
+    /** 更新・削除の対象を、行ロック付きで取得する（在庫の登録・更新との競合を防ぐ）。 */
     private Category findActive(Integer categoryId) {
-        return repository.findByCategoryIdAndDeleteFlag(categoryId, Category.NOT_DELETED)
+        return repository.findWithLockByCategoryIdAndDeleteFlag(categoryId, Category.NOT_DELETED)
                 .orElseThrow(() -> new NotFoundException(MSG_NOT_FOUND + categoryId));
     }
 

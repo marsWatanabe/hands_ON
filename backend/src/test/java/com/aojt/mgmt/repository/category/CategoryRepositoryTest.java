@@ -2,6 +2,8 @@ package com.aojt.mgmt.repository.category;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.aojt.mgmt.model.Category;
@@ -10,7 +12,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Sort;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
@@ -24,6 +28,9 @@ class CategoryRepositoryTest {
 
     @Autowired
     CategoryRepository repository;
+
+    @Autowired
+    JdbcTemplate jdbc;
 
     private Category save(String type, String name, boolean deleted) {
         Category c = new Category();
@@ -125,5 +132,73 @@ class CategoryRepositoryTest {
 
         assertEquals(Category.NOT_DELETED, saved.getDeleteFlag());
         assertTrue(saved.getCreateDate() != null && saved.getUpdateDate() != null);
+    }
+
+    private String activeNameOf(Integer categoryId) {
+        return jdbc.queryForObject(
+                "SELECT active_name FROM category_info WHERE category_id = ?", String.class, categoryId);
+    }
+
+    /** 同じ種別に未削除どうしで同じカテゴリ名を保存すると、DB の一意制約で拒否されること（同時リクエストの競合を防ぐ）。 */
+    @Test
+    void save_rejectsDuplicateActiveNameInTheSameTypeByConstraint() {
+        save("part", "重複確認", false);
+
+        assertThrows(DataIntegrityViolationException.class, () -> save("part", "重複確認", false));
+    }
+
+    /** 名前を変更して、同じ種別の未削除のカテゴリ名と同じになると、DB の一意制約で拒否されること。 */
+    @Test
+    void save_rejectsRenameToAnExistingActiveNameByConstraint() {
+        save("part", "名称A", false);
+        Category other = save("part", "名称B", false);
+        other.setCategoryName("名称A");
+
+        assertThrows(DataIntegrityViolationException.class, () -> repository.saveAndFlush(other));
+    }
+
+    /** 別の種別、削除済み、削除後の再登録では、同じカテゴリ名を保存できること。 */
+    @Test
+    void save_allowsSameNameInAnotherTypeAndForDeletedRows() {
+        Category first = save("part", "共通名", false);
+        save("product", "共通名", false);
+        save("part", "共通名削除", true);
+        save("part", "共通名削除", true);
+
+        first.markDeleted();
+        repository.saveAndFlush(first);
+        Category again = save("part", "共通名", false);
+
+        assertEquals("共通名", activeNameOf(again.getCategoryId()));
+        assertNull(activeNameOf(first.getCategoryId()));
+    }
+
+    /** 有効なカテゴリ名（active_name）が、名称の変更と論理削除に追従して DB に保存されること。 */
+    @Test
+    void activeName_followsNameAndDeleteFlagInTheDatabase() {
+        Category saved = save("part", "旧名", false);
+        assertEquals("旧名", activeNameOf(saved.getCategoryId()));
+
+        saved.setCategoryName("新名");
+        repository.saveAndFlush(saved);
+        assertEquals("新名", activeNameOf(saved.getCategoryId()));
+
+        saved.markDeleted();
+        repository.saveAndFlush(saved);
+        assertNull(activeNameOf(saved.getCategoryId()));
+    }
+
+    /** 行ロック付きの検索が、削除フラグに一致するカテゴリだけを返すこと（トランザクション内で実行できること）。 */
+    @Test
+    void findWithLock_returnsOnlyTheMatchingDeleteFlag() {
+        Category active = save("part", "ロック確認", false);
+        Category deleted = save("part", "ロック確認削除", true);
+
+        assertTrue(repository.findWithLockByCategoryIdAndDeleteFlag(
+                active.getCategoryId(), Category.NOT_DELETED).isPresent());
+        assertTrue(repository.findWithLockByCategoryIdAndDeleteFlag(
+                deleted.getCategoryId(), Category.NOT_DELETED).isEmpty());
+        assertTrue(repository.findWithLockByCategoryIdAndDeleteFlag(
+                deleted.getCategoryId(), Category.DELETED).isPresent());
     }
 }

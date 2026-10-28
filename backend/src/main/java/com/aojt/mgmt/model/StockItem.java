@@ -44,6 +44,13 @@ public abstract class StockItem {
     @Column(name = "name", nullable = false, length = 255)
     private String name;
 
+    /**
+     * 有効な名称。未削除の間は {@link #name} と同じ値、削除済みは null。
+     * 一意制約 {@code (center_id, active_name)} が、同じセンター内の未削除どうしの名称の重複を防ぐ（V5）。
+     */
+    @Column(name = "active_name", length = 255)
+    private String activeName;
+
     /** 在庫センター。 */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "center_id")
@@ -109,12 +116,22 @@ public abstract class StockItem {
     }
 
     /**
-     * 名称を設定する。
+     * 名称を設定する。有効な名称（{@link #getActiveName()}）も合わせて更新する。
      *
      * @param name 名称
      */
     public void setName(String name) {
         this.name = name;
+        syncActiveName();
+    }
+
+    /**
+     * 有効な名称を返す。
+     *
+     * @return 未削除なら名称、削除済みなら null
+     */
+    public String getActiveName() {
+        return activeName;
     }
 
     /**
@@ -198,8 +215,14 @@ public abstract class StockItem {
         return updateDate;
     }
 
-    /** 論理削除する（{@code delete_flag = 1}）。 */
+    /** 論理削除する（{@code delete_flag = 1}）。有効な名称は null にして、同じ名称を再び登録できるようにする。 */
     public void markDeleted() {
         this.deleteFlag = DELETED;
+        syncActiveName();
+    }
+
+    /** 有効な名称を、削除フラグと名称から求め直す。 */
+    private void syncActiveName() {
+        this.activeName = Integer.valueOf(NOT_DELETED).equals(deleteFlag) ? name : null;
     }
 }

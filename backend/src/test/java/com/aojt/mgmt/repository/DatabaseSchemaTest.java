@@ -16,7 +16,7 @@ import com.aojt.mgmt.model.Center;
 import com.aojt.mgmt.repository.center.CenterRepository;
 
 /**
- * Verifies the Flyway-managed schema (db/migration/V1, db/seed-dev/V2) on H2:
+ * Verifies the Flyway-managed schema (db/migration/V1, V4, V5, db/seed-dev/V2) on H2:
  * Hibernate validates the entities against it at startup, constraints reject bad data,
  * and the seed data follows docs/table-definitions.md.
  */
@@ -128,6 +128,54 @@ class DatabaseSchemaTest {
         assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(
                 "INSERT INTO _user (firstname, lastname, email, password, role)"
                         + " VALUES ('c', 'd', 'b@example.com', 'hash', 'ROLE_USER')"));
+    }
+
+    // ---- V5: 未削除どうしの名称の一意制約（active_name） ----
+
+    /** 開発用データの未削除の行で、active_name が名称と同じ値で埋まっていること（V5 の既存行への反映）。 */
+    @Test
+    void activeNameIsBackfilledForExistingRows() {
+        assertEquals(0, count("SELECT COUNT(*) FROM category_info WHERE delete_flag = 0"
+                + " AND (active_name IS NULL OR active_name <> category_name)"));
+        assertEquals(0, count("SELECT COUNT(*) FROM parts_stock_info WHERE delete_flag = 0"
+                + " AND (active_name IS NULL OR active_name <> name)"));
+        assertEquals(0, count("SELECT COUNT(*) FROM products_stock_info WHERE delete_flag = 0"
+                + " AND (active_name IS NULL OR active_name <> name)"));
+    }
+
+    /** カテゴリ名は同じ種別の未削除どうしで一意。別の種別と削除済み（active_name が NULL）は重複してよいこと。 */
+    @Test
+    void categoryActiveNameIsUniquePerType() {
+        String sql = "INSERT INTO category_info (category_type, category_name, active_name, delete_flag)"
+                + " VALUES (?, ?, ?, ?)";
+        jdbc.update(sql, "part", "U-CAT", "U-CAT", 0);
+
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(sql, "part", "U-CAT", "U-CAT", 0));
+        jdbc.update(sql, "product", "U-CAT", "U-CAT", 0);
+        jdbc.update(sql, "part", "U-CAT", null, 1);
+        jdbc.update(sql, "part", "U-CAT", null, 1);
+    }
+
+    /** 在庫の名称は同じセンターの未削除どうしで一意（部品・製品とも）。別センターと削除済みは重複してよいこと。 */
+    @Test
+    void stockActiveNameIsUniquePerCenter() {
+        String parts = "INSERT INTO parts_stock_info (name, active_name, center_id, category_id, amount, delete_flag)"
+                + " VALUES (?, ?, ?, 1, 1, ?)";
+        jdbc.update(parts, "U-PART", "U-PART", 1, 0);
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(parts, "U-PART", "U-PART", 1, 0));
+        jdbc.update(parts, "U-PART", "U-PART", 2, 0);
+        jdbc.update(parts, "U-PART", null, 1, 1);
+        jdbc.update(parts, "U-PART", null, 1, 1);
+
+        String products = "INSERT INTO products_stock_info"
+                + " (product_code, name, active_name, center_id, category_id, amount, delete_flag)"
+                + " VALUES (?, ?, ?, ?, 11, 1, ?)";
+        jdbc.update(products, "U-P-1", "U-PROD", "U-PROD", 1, 0);
+        assertThrows(DataIntegrityViolationException.class,
+                () -> jdbc.update(products, "U-P-2", "U-PROD", "U-PROD", 1, 0));
+        jdbc.update(products, "U-P-3", "U-PROD", "U-PROD", 2, 0);
+        jdbc.update(products, "U-P-4", "U-PROD", null, 1, 1);
+        jdbc.update(products, "U-P-5", "U-PROD", null, 1, 1);
     }
 
     // ---- repository ----

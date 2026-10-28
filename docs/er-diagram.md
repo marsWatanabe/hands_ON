@@ -32,6 +32,7 @@ erDiagram
         int category_id PK "自動採番"
         varchar category_type "part / product"
         varchar category_name "20文字"
+        varchar active_name UK "20文字 未削除の間だけカテゴリ名と同じ値、削除済は NULL（V5）"
         varchar description "255文字"
         tinyint delete_flag "0:未削除 1:削除済"
         datetime create_date
@@ -58,6 +59,7 @@ erDiagram
         int stock_id PK "自動採番"
         int category_id FK
         varchar name "255文字 必須"
+        varchar active_name UK "255文字 未削除の間だけ名称と同じ値、削除済は NULL（V5）"
         int center_id FK
         varchar description "255文字"
         int amount "数量(個)"
@@ -71,6 +73,7 @@ erDiagram
         varchar product_code UK "20文字 必須 重複禁止（V4 で追加）"
         int category_id FK
         varchar name "255文字 必須"
+        varchar active_name UK "255文字 未削除の間だけ名称と同じ値、削除済は NULL（V5）"
         int center_id FK
         varchar description "255文字"
         int amount "数量(個)"
@@ -134,7 +137,20 @@ erDiagram
 | --- | --- | :-: | --- | --- |
 | product_code | VARCHAR(20) | ◯ | 製品コード。削除済みを含めて一意（制約 `uk_products_stock_product_code`。DB で保証）。V4 で、既存の行に `PRD-` + stock_id（6 桁ゼロ埋め、例 `PRD-000012`）を入れた。**連番管理ではない**（stock_id の欠番はコードにも欠番）。新規の行は入力する | [提案] 画面仕様 |
 
-メモ: 在庫の名称は DB では一意にしない。**同じセンターの中で、未削除のものと重複できない**ことは API（Service）で検証する（別のセンターには同じ名称を置ける）。カテゴリ名も、同じ種別の中で未削除のものと重複できないことを API で検証する。部分的な一意制約が H2 と PostgreSQL で揃わないため。**保証はアプリ層だけで、同時リクエストの競合は防げない**（製品コードだけが DB の一意制約でも守られる）。詳細と対策案は [detailed-design-stocks.md](detailed-design-stocks.md) 第 6.1 章。
+**名称の一意制約（2026-10-24 追加、V5）**: 「同じセンターの中で、未削除どうしの名称が重複しない」（在庫）と「同じ種別の中で、未削除どうしのカテゴリ名が重複しない」を、Service の事前照合に加えて DB でも保証する。削除済みの行は重複してよいため、「削除済みを含めた一意制約」は使えない。部分ユニークインデックスは H2 に無いため、次の列を使う。
+
+| 物理名 | 型 | NOT NULL | 説明 | 出典 |
+| --- | --- | :-: | --- | --- |
+| category_info.active_name | VARCHAR(20) |  | 未削除の間だけ `category_name` と同じ値、削除済は NULL。一意制約 `uk_category_active_name (category_type, active_name)` | [提案] V5 |
+| parts_stock_info.active_name | VARCHAR(255) |  | 未削除の間だけ `name` と同じ値、削除済は NULL。一意制約 `uk_parts_stock_active_name (center_id, active_name)` | [提案] V5 |
+| products_stock_info.active_name | VARCHAR(255) |  | 同上。一意制約 `uk_products_stock_active_name (center_id, active_name)` | [提案] V5 |
+
+- 一意制約では NULL どうしが重複と見なされない（H2、PostgreSQL とも）。この性質で、削除済みは何件でも、未削除は 1 件だけになる。
+- `active_name` はエンティティが名称と削除フラグから設定する。**直接 SQL で行を追加・更新するときは、未削除なら name と同じ値を入れること**（入れ忘れた行は制約の対象にならない）。
+- 在庫の `center_id` が NULL の行（原典で許している。API では作れない）は制約の対象にならない。
+- 既存データに未削除どうしの重複があると、V5 の適用は制約違反で失敗する。本番に適用する前に、データのコピーで確認する。
+
+同時リクエストでの「使用中カテゴリの削除」と「そのカテゴリを使う在庫の登録」の矛盾は、論理削除では外部キーが働かないため、カテゴリの行ロック（`SELECT ... FOR UPDATE`）で直列にして防ぐ（アプリ側。[detailed-design-stocks.md](detailed-design-stocks.md) 第 6.1 章）。同じ行を 2 人が編集したときの「更新の消失」は防げない（楽観ロックは未決）。
 
 ## 4. インデックスと制約
 
@@ -149,8 +165,8 @@ erDiagram
 | `_user.email` | ユニーク制約 | ログイン ID の重複防止 | **実装済**（原典 SQL にもある） |
 | `center_info (delete_flag, operational_status)` | 複合インデックス | 一覧の絞り込み | 未実施（件数が増えた場合のみ） |
 | `products_stock_info.product_code` | ユニーク制約（削除済みを含む） | 製品コードの重複防止 | **実装済**（V4、`uk_products_stock_product_code`） |
-| `category_info (category_type, category_name)` | （DB の制約は無し）アプリ層の事前照合 | BR-03 | **アプリ層だけで保証**（同時リクエストの競合は防げない）。DB 制約は未決（部分ユニークインデックスが H2 に無い） |
-| `parts_stock_info`、`products_stock_info` の `(center_id, name)` | （DB の制約は無し）アプリ層の事前照合 | BR-04（同じセンター内で重複禁止） | **アプリ層だけで保証**（同上） |
+| `category_info (category_type, active_name)` | ユニーク制約 `uk_category_active_name`（未削除どうしで一意。削除済は NULL） | BR-03 | **実装済**（V5）。同時リクエストの競合も防げる |
+| `parts_stock_info`、`products_stock_info` の `(center_id, active_name)` | ユニーク制約 `uk_parts_stock_active_name`、`uk_products_stock_active_name` | BR-04（同じセンター内で重複禁止） | **実装済**（V5） |
 | `center_info.version` ほか | 楽観ロック用の `version` 列 | 同時更新による更新の消失の防止 | 未決（要確認） |
 
 ## 5. 拡張案: 操作履歴（提案）
@@ -193,6 +209,7 @@ erDiagram
 | `db/seed-dev` | V2 | 最小の初期データ: カテゴリ 16、センター 3（東京、大阪、名古屋）、部品在庫 20、製品在庫 12 | 開発、テスト |
 | `db/seed-demo` | V3 | 動作確認用のデモデータ: センター 19 件を追加（合計 22）、部品在庫 38、製品在庫 19 を追加（合計 58、合計 31） | 開発のみ。**テストは読み込まない**（`application-test.yml`。テストの期待値は V2 の 3 件のまま） |
 | `db/migration` | V4 | 製品在庫に `product_code` を追加（既存行に `PRD-` + stock_id（6 桁ゼロ埋め）を入れ、NOT NULL と一意制約） | すべての環境。V3 の後に適用されるため、V3 のデモ行も採番される |
+| `db/migration` | V5 | カテゴリと在庫に `active_name` を追加（未削除なら名称と同じ値、削除済は NULL）し、未削除どうしの名称の一意制約を付ける | すべての環境。既存行は V5 が埋める。既存データに未削除どうしの重複があると失敗する |
 
 デモデータ（V3）の設計:
 
